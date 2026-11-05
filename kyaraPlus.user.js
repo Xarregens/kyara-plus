@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Kyara Plus
-// @namespace    https://github.com/Mxyuki/Kyara-Script
-// @version      2.34.3-barres.61
-// @description  Améliore kyara.games : rareté et exemplaires possédés sur les offres d’échange, bouton « Donner » sous chaque carte, wishlist en premier, offres cachées par le site, verrouillage depuis la collection, comptoir masquable, offres bangers et rentables en direct, auto-accept par rareté ou par gain, barre de fair-play (Dons / Écart) que chaque échange va entamer.
-// @author       Myuki
-// @homepageURL  https://github.com/Mxyuki/Kyara-Script
-// @supportURL   https://github.com/Mxyuki/Kyara-Script/issues
-// @updateURL    https://github.com/Mxyuki/Kyara-Script/raw/refs/heads/main/kyaraPlus.user.js
-// @downloadURL  https://github.com/Mxyuki/Kyara-Script/raw/refs/heads/main/kyaraPlus.user.js
+// @namespace    https://github.com/xarregens/kyara-plus
+// @version      2.35.0
+// @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
+// @author       Myuki (script d’origine), fork Xarregens
+// @homepageURL  https://github.com/xarregens/kyara-plus
+// @supportURL   https://github.com/xarregens/kyara-plus/issues
+// @updateURL    https://raw.githubusercontent.com/xarregens/kyara-plus/main/kyaraPlus.user.js
+// @downloadURL  https://raw.githubusercontent.com/xarregens/kyara-plus/main/kyaraPlus.user.js
 // @icon         https://kyara.games/brand/favicon/favicon.svg
 // @match        https://kyara.games/*
 // @run-at       document-idle
@@ -4622,7 +4622,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.34.3-barres.11";
+  var SURVEY_VERSION = "2.35.0";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

@@ -1,6 +1,11 @@
-# Changelog du fork
+# Changelog
 
-Base : Kyara Plus 2.34.3 (Myuki). Les versions du fork sont numérotées `2.34.3-barres.N`.
+Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées `2.34.3-barres.N` ; depuis la publication
+sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
+pour que Tampermonkey ne revienne jamais en arrière.
+
+## 2.35.0 — publication sur GitHub
+- Même contenu que 2.34.3-barres.61 ; en-tête du script pointant vers ce dépôt (mises à jour automatiques).
 
 ## 2.34.3-barres.49 → .61 — Mon activité, auto-accept, finitions
 - Mon activité : onglets Échanges / Transactions avec sous-catégories, Achats sans les enchères perdues, historique par
