@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.7
+- Collection, vue Cartes : le menu du profil se refermait aussitôt ouvert. Les filtres d'albums mémorisés faisaient
+  cliquer en boucle le « Afficher plus » des cartes (pris pour celui des albums), et chaque clic fermait le menu comme
+  un clic à côté. Le chargement automatique ne touche plus qu'au bouton de la liste des albums.
+
 ## 2.35.6
 - Commandes console de diagnostic `kyaraPlusDiag` : `off("collection")` / `on("collection")` désactivent ou réactivent
   les fonctions d'une page (mémorisé), `features()` les liste, `menu()` puis `download()` enregistrent les événements et

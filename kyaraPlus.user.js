@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.6
+// @version      2.35.7
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -1122,6 +1122,16 @@
   var ALBUM_ITEM = "main ul.albums > li";
   var ALBUM_BUTTON = "main button.album";
   var SHOW_MORE = "main .more button";
+  var ALBUM_LIST = "main ul.albums";
+  var CARD_GRID_CELL = "main .cell";
+  // The "Afficher plus" of the albums only. The cards view has its own, which must never be clicked for it: a synthetic
+  // click reaches the site like a real one and closes whatever menu is open (the profile menu, for instance).
+  function albumShowMore() {
+    const albums = document.querySelector(ALBUM_LIST);
+    if (!albums) return null;
+    const buttons = [...document.querySelectorAll(SHOW_MORE)];
+    return buttons.find((button) => albums.parentElement.contains(button)) ?? (document.querySelector(CARD_GRID_CELL) ? null : buttons[0] ?? null);
+  }
   var albumUrl = (series) => `/collection?serie=${encodeURIComponent(series)}`;
   var albumName = (element) => element.querySelector(".a-name, .al-name")?.textContent.trim();
   var claimDateFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
@@ -1175,7 +1185,7 @@
   async function expandAllAlbums(button) {
     button.disabled = true;
     for (let click = 0; click < config_default.collection.maxExpandClicks; click++) {
-      const showMore = document.querySelector(SHOW_MORE);
+      const showMore = albumShowMore();
       if (!showMore) break;
       showMore.click();
       await sleep(config_default.collection.expandDelayMs);
@@ -1299,7 +1309,7 @@
         if (!filtersActive() || autoClicks >= config_default.collection.maxExpandClicks) return done();
         const visible = items.filter((item) => !item.classList.contains("kp-filtered-out")).length;
         if (visible >= config_default.collection.autoExpandMinVisible) return done();
-        const showMore = document.querySelector(SHOW_MORE);
+        const showMore = albumShowMore();
         if (!showMore || showMore.disabled) return done();
         setLoading(true, items.length);
         const wait = lastAutoClick + config_default.collection.autoExpandGapMs - Date.now();
@@ -4632,7 +4642,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.6";
+  var SURVEY_VERSION = "2.35.7";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

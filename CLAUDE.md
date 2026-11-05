@@ -42,6 +42,13 @@ prouvent pas la forme exacte des vraies réponses, qui vient des relevés (comma
 - File d'attente des requêtes : rafale de 4 puis une toutes les 250 ms × `x-kyara-rush` ; limite générale du site
   300/min, limite marché 20/min pour les acceptations.
 
+## Pièges connus
+
+- Un `.click()` synthétique sur un bouton du site est vu par le site comme un vrai clic : il ferme tout menu ouvert
+  (profil…). Ne cliquer que la cible voulue et seulement quand elle existe (`albumShowMore()` dans collection-albums :
+  la vue Cartes a son propre « Afficher plus », avec le même sélecteur `main .more button`).
+- `/collection` sert les deux vues (Cartes et Albums) sur la même URL : une feature « albums » tourne aussi en vue Cartes.
+
 ## Goûts du propriétaire
 
 Interface sobre : peu de texte, infobulles plutôt que paragraphes, onglets centrés, couleurs fixes (bleu nuit `#161b26`
