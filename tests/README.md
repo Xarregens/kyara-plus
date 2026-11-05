@@ -9,6 +9,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 
 | Script | Page | Ce qu'il vérifie |
 | --- | --- | --- |
+| `lossfilter.cjs` | Tableau des offres | Bouton partagé « Sans perte ≠ rareté » / « Sans aucune perte » : cartes cachées selon le côté, exclusivité des côtés. |
 | `smoke.cjs` | Tableau des offres | Temps d'apparition du tableau, de la jauge, des pastilles ; nombre de rendus ; requêtes. |
 | `interact.cjs` | Tableau des offres | Masquer / réafficher, « Voir plus », filtres, recherche, « Donner » (état occupé + refus serveur). |
 | `widths.cjs` | Panneau de droite | Tuiles de même largeur, aucun bouton tronqué. |

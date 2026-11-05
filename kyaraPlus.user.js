@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.1
+// @version      2.35.2
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4146,9 +4146,12 @@ Continuer ?`);
     DOUBLES: "doubles",
     MISSING: "missing",
     WISHED: "wished",
-    // hides the cards I would give at a loss for a lower rarity (and the offers where nothing else remains)
-    NO_LOSS: "noLoss"
+    // hides the cards I would give at a loss against a different rarity (and the offers where nothing else remains)
+    NO_LOSS_CROSS: "noLossCross",
+    // hides every card I would give at a loss, same rarity included
+    NO_LOSS_ALL: "noLossAll"
   };
+  var LOSS_FILTERS = [Filter.NO_LOSS_CROSS, Filter.NO_LOSS_ALL];
   var gainKey = (gain) => gain ?? Number.NEGATIVE_INFINITY;
   var descending = (a, b) => a === b ? 0 : a < b ? 1 : -1;
   var isGivable = (option) => GIVABLE.has(option.status);
@@ -4185,17 +4188,24 @@ Continuer ?`);
   var byBoardPriority = (a, b) => Number(b.wished) - Number(a.wished) || rarityRank(a.received.rarity) - rarityRank(b.received.rarity) || descending(gainKey(a.bestAvailable?.gain), gainKey(b.bestAvailable?.gain));
   var cardMatches = (card, query2) => searchKey(card.name).includes(query2) || searchKey(card.series ?? "").includes(query2);
   var matchesSearch = (analysis, query2) => !query2 || cardMatches(analysis.received, query2) || analysis.options.some((option) => cardMatches(option.card, query2));
-  // A losing downgrade: I give a higher rarity for a lower one, and the known prices say I lose (or gain nothing)
-  var isLosingDowngrade = (analysis, option) => rarityRank(option.card.rarity) < rarityRank(analysis.received.rarity) && option.gain != null && option.gain <= 0;
-  function withoutLosingDowngrades(analysis) {
-    const options = analysis.options.filter((option) => !isLosingDowngrade(analysis, option));
+  // A loss: the known prices say I give more than I get (or exactly as much)
+  var isLoss = (option) => option.gain != null && option.gain <= 0;
+  var LOSS_TESTS = {
+    // only when the rarities differ, in both directions (a higher one given for a lower, or a lower one for a higher)
+    [Filter.NO_LOSS_CROSS]: (analysis, option) => isLoss(option) && option.card.rarity !== analysis.received.rarity,
+    [Filter.NO_LOSS_ALL]: (analysis, option) => isLoss(option)
+  };
+  var activeLossTest = (activeFilters) => LOSS_FILTERS.filter((filter) => activeFilters.has(filter)).map((filter) => LOSS_TESTS[filter]).pop() ?? null;
+  function withoutLosses(analysis, isHidden) {
+    const options = analysis.options.filter((option) => !isHidden(analysis, option));
     if (options.length === analysis.options.length) return analysis;
     return { ...analysis, options, bestAvailable: bestOption(options, (option) => option.status === GiveStatus.AVAILABLE) };
   }
   function boardOffers2(analyses, activeFilters, rarities, search = "") {
     const tests = [...activeFilters].map((filter) => FILTER_TESTS[filter]).filter(Boolean);
     const query2 = searchKey(search.trim());
-    if (activeFilters.has(Filter.NO_LOSS)) analyses = analyses.map(withoutLosingDowngrades);
+    const lossTest = activeLossTest(activeFilters);
+    if (lossTest) analyses = analyses.map((analysis) => withoutLosses(analysis, lossTest));
     return analyses.filter(
       (analysis) => rarities.has(analysis.received.rarity) && hasOwnedOption(analysis) && tests.every((test) => test(analysis)) && matchesSearch(analysis, query2)
     ).sort(byBoardPriority);
@@ -4622,7 +4632,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.1";
+  var SURVEY_VERSION = "2.35.2";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5195,11 +5205,16 @@ Continuer ?`);
     [Filter.TRADEABLE, "Échangeables"],
     [Filter.DOUBLES, "Avec mes doublons"],
     [Filter.MISSING, "Cartes que je n’ai pas"],
-    [Filter.WISHED, "Ma wishlist"],
-    [Filter.NO_LOSS, "Sans perte"]
+    [Filter.WISHED, "Ma wishlist"]
+  ];
+  // One control, two sides, never both lit: the right side already covers the left one
+  var LOSS_LABELS = [
+    [Filter.NO_LOSS_CROSS, "Sans perte ≠ rareté"],
+    [Filter.NO_LOSS_ALL, "Sans aucune perte"]
   ];
   var FILTER_TITLES = {
-    [Filter.NO_LOSS]: "Cache les cartes où tu donnerais une rareté supérieure contre une inférieure en perdant de la valeur selon les prix moyens (prix connus seulement), et les offres où il ne reste rien d’autre à donner. Les montées de rareté ne sont jamais cachées."
+    [Filter.NO_LOSS_CROSS]: "Cache les cartes que tu donnerais à perte contre une rareté différente (une rareté supérieure contre une inférieure, ou l’inverse), selon les prix moyens connus, et les offres où il ne reste rien d’autre à donner. Les pertes entre cartes de même rareté restent visibles.",
+    [Filter.NO_LOSS_ALL]: "Cache toutes les cartes que tu donnerais à perte selon les prix moyens connus, même rareté comprise, et les offres où il ne reste rien d’autre à donner."
   };
   var WISHLIST_GROUP = "wishlist";
   function statusText2(state, count) {
@@ -5281,7 +5296,8 @@ Continuer ?`);
   }
   function createBoard(controller, { onPropose }) {
     let visibleCount = config_default.offers.renderStep;
-    const activeFilters = new Set(readSetting("offerFilters", [Filter.TRADEABLE]));
+    // "noLoss" is the name the single filter had before 2.35.2: it becomes the cross-rarity side
+    const activeFilters = new Set(readSetting("offerFilters", [Filter.TRADEABLE]).map((filter) => filter === "noLoss" ? Filter.NO_LOSS_CROSS : filter));
     const activeRarities = new Set(readSetting("offerRarities", RARITIES));
     let lastState = null;
     let search = "";
@@ -5303,6 +5319,20 @@ Continuer ?`);
       chip.addEventListener("click", () => toggleFilter(filter, chip));
       return chip;
     });
+    // The two loss filters share one segmented chip: lighting one side turns the other off
+    const lossSides = LOSS_LABELS.map(([filter, label]) => {
+      const side = h("button", { class: "kp-chip kp-chip--side", type: "button", "aria-pressed": String(activeFilters.has(filter)), title: FILTER_TITLES[filter] ?? null }, label);
+      side.addEventListener("click", () => {
+        for (const other of LOSS_FILTERS) {
+          if (other === filter || !activeFilters.has(other)) continue;
+          activeFilters.delete(other);
+          lossSides[LOSS_FILTERS.indexOf(other)].setAttribute("aria-pressed", "false");
+        }
+        toggleFilter(filter, side);
+      });
+      return side;
+    });
+    const lossChip = h("div", { class: "kp-chip-pair", role: "group", "aria-label": "Pertes" }, lossSides);
     const rarityChips = [...RARITIES].reverse().map((rarity) => {
       const chip = h(
         "button",
@@ -5356,6 +5386,7 @@ Continuer ?`);
         { class: "kp-filters", role: "group", "aria-label": "Filtres" },
         searchInput,
         filterChips,
+        lossChip,
         h("div", { class: "kp-field kp-filters__rarities", role: "group", "aria-label": "Raretés" }, rarityChips)
       ),
       list
@@ -6676,6 +6707,27 @@ body.kp-offers main section.board > :not([role='dialog']):not(:has([role='dialog
   border-color: var(--acc);\r
   background: var(--acc-soft);\r
   color: var(--fg);\r
+}\r
+\r
+/* Two filters in one pill: the sides share the border, only the pressed one lights up */\r
+.kp-chip-pair {\r
+  display: inline-flex;\r
+  border: 1px solid var(--line2);\r
+  border-radius: var(--r-pill);\r
+  overflow: hidden;\r
+}\r
+\r
+.kp-chip-pair .kp-chip--side {\r
+  border: 0;\r
+  border-radius: 0;\r
+}\r
+\r
+.kp-chip-pair .kp-chip--side + .kp-chip--side {\r
+  border-left: 1px solid var(--line2);\r
+}\r
+\r
+.kp-chip-pair .kp-chip--side[aria-pressed='true'] {\r
+  box-shadow: inset 0 0 0 1px var(--acc);\r
 }\r
 \r
 .kp-title {\r
