@@ -22,7 +22,7 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
   bleu (Écart), orange (Dons), rouge (refusé, avec le montant manquant). Les limites entre deux joueurs (3 000 ◆ de dons,
   5 000 ◆ dans le même sens sur 48 h, déduites des messages de refus du site) sont prises en compte.
 - Jauge Dons / Écart dans le panneau de droite, avec la légende des pastilles ; lue dès la première page d'offres.
-- Filtre « Sans déclassement à perte » ; les offres bangers à perte sont écartées.
+- Filtre « Sans perte » (grosses raretés données à perte cachées) ; les offres bangers à perte sont écartées.
 - Panneau de droite : une seule liste « Offres rentables » (bangers inclus, badge *banger*), cartes compactes, lignes
   alignées comme le tableau, curseur de taille, gain minimum sur la ligne des onglets, choix recommandé = la meilleure
   carte que le fair-play devrait accepter (bouton jaune), tuiles de largeur fixe.

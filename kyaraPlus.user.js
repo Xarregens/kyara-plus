@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.0
+// @version      2.35.1
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4622,7 +4622,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.0";
+  var SURVEY_VERSION = "2.35.1";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5196,10 +5196,10 @@ Continuer ?`);
     [Filter.DOUBLES, "Avec mes doublons"],
     [Filter.MISSING, "Cartes que je n’ai pas"],
     [Filter.WISHED, "Ma wishlist"],
-    [Filter.NO_LOSS, "Sans déclassement à perte"]
+    [Filter.NO_LOSS, "Sans perte"]
   ];
   var FILTER_TITLES = {
-    [Filter.NO_LOSS]: "Cache les cartes où tu donnerais une rareté supérieure contre une inférieure en perdant de la valeur (prix connus), et les offres où il ne reste rien d’autre à donner."
+    [Filter.NO_LOSS]: "Cache les cartes où tu donnerais une rareté supérieure contre une inférieure en perdant de la valeur selon les prix moyens (prix connus seulement), et les offres où il ne reste rien d’autre à donner. Les montées de rareté ne sont jamais cachées."
   };
   var WISHLIST_GROUP = "wishlist";
   function statusText2(state, count) {

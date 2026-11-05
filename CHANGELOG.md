@@ -4,6 +4,9 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.1
+- Tableau des offres : le filtre « Sans déclassement à perte » s'appelle « Sans perte » (même effet, explication au survol).
+
 ## 2.35.0 — publication sur GitHub
 - Même contenu que 2.34.3-barres.61 ; en-tête du script pointant vers ce dépôt (mises à jour automatiques).
 
