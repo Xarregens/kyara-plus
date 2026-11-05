@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.5
+- Tableau des offres : le côté « Sans perte ≠ rareté » de la pilule s'appelle « Symbios la tepu » (même effet) ;
+  le bouton à part de la 2.35.4 est retiré.
+
 ## 2.35.4
 - Tableau des offres : bouton indépendant « Symbios la tepu », qui cache les cartes d'une rareté supérieure à celle
   reçue quel que soit le gain ; se combine avec les autres filtres.

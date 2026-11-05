@@ -22,7 +22,7 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
   bleu (Écart), orange (Dons), rouge (refusé, avec le montant manquant). Les limites entre deux joueurs (3 000 ◆ de dons,
   5 000 ◆ dans le même sens sur 48 h, déduites des messages de refus du site) sont prises en compte.
 - Jauge Dons / Écart dans le panneau de droite, avec la légende des pastilles ; lue dès la première page d'offres.
-- Filtres de perte en un seul bouton à deux côtés : « Sans perte ≠ rareté » (cartes données à perte contre une rareté différente, dans les deux sens) ou « Sans aucune perte » (toute perte, même rareté comprise) ; un seul côté actif à la fois. Bouton à part « Symbios la tepu » : jamais une rareté supérieure donnée contre une inférieure, gain ou pas. Les offres bangers à perte sont écartées.
+- Filtres de perte en un seul bouton à deux côtés : « Symbios la tepu » (cartes données à perte contre une rareté différente, dans les deux sens) ou « Sans aucune perte » (toute perte, même rareté comprise) ; un seul côté actif à la fois. Les offres bangers à perte sont écartées.
 - Panneau de droite : une seule liste « Offres rentables » (bangers inclus, badge *banger*), cartes compactes, lignes
   alignées comme le tableau, curseur de taille, gain minimum sur la ligne des onglets, choix recommandé = la meilleure
   carte que le fair-play devrait accepter (bouton jaune), tuiles de largeur fixe.

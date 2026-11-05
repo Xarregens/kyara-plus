@@ -55,7 +55,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
       crossLoss: tiles.filter((t) => t.loss && !t.sameRarity).length, sameLoss: tiles.filter((t) => t.loss && t.sameRarity).length, downgrades: tiles.filter((t) => t.downgrade).length };
   }, RARITIES);
   const pressed = () => page.evaluate(() => [...document.querySelectorAll('.kp-chip-pair .kp-chip--side')].map((b) => b.getAttribute('aria-pressed')));
-  const LEFT = '.kp-chip-pair .kp-chip--side:has-text("Sans perte ≠ rareté")';
+  const LEFT = '.kp-chip-pair .kp-chip--side:has-text("Symbios la tepu")';
   const RIGHT = '.kp-chip-pair .kp-chip--side:has-text("Sans aucune perte")';
   const out = {};
   out.titles = await page.evaluate(() => [...document.querySelectorAll('.kp-chip-pair .kp-chip--side')].map((b) => b.title.slice(0, 40)));
@@ -68,21 +68,11 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.backToCross = { ...(await snapshot()), pressed: await pressed() };
   await page.click(LEFT); await page.waitForTimeout(150);
   out.off = { ...(await snapshot()), pressed: await pressed() };
-  const DOWN = '.kp-filters > .kp-chip:has-text("Symbios la tepu")';
-  await page.click(DOWN); await page.waitForTimeout(150);
-  out.down = { ...(await snapshot()), pressed: await pressed(), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
-  await page.click(RIGHT); await page.waitForTimeout(150);
-  out.downAndAll = { ...(await snapshot()), pressed: await pressed(), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
-  await page.click(DOWN); await page.click(RIGHT); await page.waitForTimeout(150);
-  out.end = { ...(await snapshot()), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
   out.errors = errors;
   const ok = out.before.crossLoss > 0
     && out.cross.crossLoss === 0 && out.cross.sameLoss > 0 && out.cross.pressed.join() === 'true,false'
     && out.all.crossLoss === 0 && out.all.sameLoss === 0 && out.all.pressed.join() === 'false,true'
     && out.backToCross.pressed.join() === 'true,false' && out.off.pressed.join() === 'false,false' && out.off.tiles === out.before.tiles
-    && out.before.downgrades > 0 && out.down.downgrades === 0 && out.down.downPressed === 'true' && out.down.pressed.join() === 'false,false'
-    && out.downAndAll.downgrades === 0 && out.downAndAll.crossLoss === 0 && out.downAndAll.sameLoss === 0 && out.downAndAll.downPressed === 'true' && out.downAndAll.pressed.join() === 'false,true'
-    && out.end.tiles === out.before.tiles && out.end.downPressed === 'false'
     && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');

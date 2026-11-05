@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.4
+// @version      2.35.5
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4149,9 +4149,7 @@ Continuer ?`);
     // hides the cards I would give at a loss against a different rarity (and the offers where nothing else remains)
     NO_LOSS_CROSS: "noLossCross",
     // hides every card I would give at a loss, same rarity included
-    NO_LOSS_ALL: "noLossAll",
-    // hides every card of a higher rarity than the one received, whatever the prices say
-    NO_DOWNGRADE: "noDowngrade"
+    NO_LOSS_ALL: "noLossAll"
   };
   var LOSS_FILTERS = [Filter.NO_LOSS_CROSS, Filter.NO_LOSS_ALL];
   var gainKey = (gain) => gain ?? Number.NEGATIVE_INFINITY;
@@ -4197,13 +4195,7 @@ Continuer ?`);
     [Filter.NO_LOSS_CROSS]: (analysis, option) => isLoss(option) && option.card.rarity !== analysis.received.rarity,
     [Filter.NO_LOSS_ALL]: (analysis, option) => isLoss(option)
   };
-  var isDowngrade = (analysis, option) => rarityRank(option.card.rarity) < rarityRank(analysis.received.rarity);
-  // The option-hiding filters combine: a card is hidden as soon as one active filter says so
-  function hiddenOptionTest(activeFilters) {
-    const tests = LOSS_FILTERS.filter((filter) => activeFilters.has(filter)).map((filter) => LOSS_TESTS[filter]);
-    if (activeFilters.has(Filter.NO_DOWNGRADE)) tests.push(isDowngrade);
-    return tests.length ? (analysis, option) => tests.some((test) => test(analysis, option)) : null;
-  }
+  var hiddenOptionTest = (activeFilters) => LOSS_FILTERS.filter((filter) => activeFilters.has(filter)).map((filter) => LOSS_TESTS[filter]).pop() ?? null;
   function withoutLosses(analysis, isHidden) {
     const options = analysis.options.filter((option) => !isHidden(analysis, option));
     if (options.length === analysis.options.length) return analysis;
@@ -4640,7 +4632,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.4";
+  var SURVEY_VERSION = "2.35.5";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5217,13 +5209,10 @@ Continuer ?`);
   ];
   // One control, two sides, never both lit: the right side already covers the left one
   var LOSS_LABELS = [
-    [Filter.NO_LOSS_CROSS, "Sans perte ≠ rareté"],
+    [Filter.NO_LOSS_CROSS, "Symbios la tepu"],
     [Filter.NO_LOSS_ALL, "Sans aucune perte"]
   ];
-  // Separate chip, combinable with the others: no higher rarity given for a lower one, profitable or not
-  var DOWNGRADE_LABEL = [Filter.NO_DOWNGRADE, "Symbios la tepu"];
   var FILTER_TITLES = {
-    [Filter.NO_DOWNGRADE]: "Cache les cartes d’une rareté supérieure à celle reçue, quel que soit le gain, et les offres où il ne reste rien d’autre à donner. Se combine avec les autres filtres.",
     [Filter.NO_LOSS_CROSS]: "Cache les cartes que tu donnerais à perte contre une rareté différente (une rareté supérieure contre une inférieure, ou l’inverse), selon les prix moyens connus, et les offres où il ne reste rien d’autre à donner. Les pertes entre cartes de même rareté restent visibles.",
     [Filter.NO_LOSS_ALL]: "Cache toutes les cartes que tu donnerais à perte selon les prix moyens connus, même rareté comprise, et les offres où il ne reste rien d’autre à donner."
   };
@@ -5307,8 +5296,8 @@ Continuer ?`);
   }
   function createBoard(controller, { onPropose }) {
     let visibleCount = config_default.offers.renderStep;
-    // "noLoss" is the name the single filter had before 2.35.2: it becomes the cross-rarity side
-    const activeFilters = new Set(readSetting("offerFilters", [Filter.TRADEABLE]).map((filter) => filter === "noLoss" ? Filter.NO_LOSS_CROSS : filter));
+    // "noLoss" is the name the single filter had before 2.35.2: it becomes the cross-rarity side; "noDowngrade" (2.35.4 only) is dropped
+    const activeFilters = new Set(readSetting("offerFilters", [Filter.TRADEABLE]).map((filter) => filter === "noLoss" ? Filter.NO_LOSS_CROSS : filter).filter((filter) => filter !== "noDowngrade"));
     const activeRarities = new Set(readSetting("offerRarities", RARITIES));
     let lastState = null;
     let search = "";
@@ -5331,7 +5320,6 @@ Continuer ?`);
       return chip;
     };
     const filterChips = FILTER_LABELS.map(chipFor);
-    const downgradeChip = chipFor(DOWNGRADE_LABEL);
     // The two loss filters share one segmented chip: lighting one side turns the other off
     const lossSides = LOSS_LABELS.map(([filter, label]) => {
       const side = h("button", { class: "kp-chip kp-chip--side", type: "button", "aria-pressed": String(activeFilters.has(filter)), title: FILTER_TITLES[filter] ?? null }, label);
@@ -5400,7 +5388,6 @@ Continuer ?`);
         searchInput,
         filterChips,
         lossChip,
-        downgradeChip,
         h("div", { class: "kp-field kp-filters__rarities", role: "group", "aria-label": "Raretés" }, rarityChips)
       ),
       list
