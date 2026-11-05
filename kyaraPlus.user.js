@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.5
+// @version      2.35.6
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4632,7 +4632,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.5";
+  var SURVEY_VERSION = "2.35.6";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -8657,6 +8657,98 @@ button.kp-act__stat:hover,\r
 `;
 
   // src/main.js
+  // src/features/diag.js
+  // Console helpers for the owner when something of the site misbehaves with the script on:
+  //   kyaraPlusDiag.off("collection")  → disables every feature whose id starts with "collection" (kept across reloads)
+  //   kyaraPlusDiag.on("collection")   → enables them again ; kyaraPlusDiag.features() lists ids and states
+  //   kyaraPlusDiag.menu()             → records for 15 s every pointer/focus/scroll event and header mutation,
+  //                                      then kyaraPlusDiag.download() saves the recording (e-mails masked)
+  var DISABLED_SETTING = "disabledFeatures";
+  var disabledFeatures = new Set(readSetting(DISABLED_SETTING, []));
+  var isFeatureDisabled = (id) => disabledFeatures.has(id);
+  var maskText = (text) => text.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\s+/g, " ").trim().slice(0, 32);
+  function describeNode(node) {
+    if (!node || node === window) return node === window ? "window" : String(node);
+    if (node === document) return "document";
+    if (node.nodeType === Node.TEXT_NODE) return `#text "${maskText(node.textContent)}"`;
+    if (node.nodeType !== Node.ELEMENT_NODE) return node.nodeName;
+    const classes = [...node.classList].slice(0, 6).join(".");
+    const inHeader = node.closest("header.hdr") ? " (header)" : "";
+    return `${node.tagName.toLowerCase()}${node.id ? `#${node.id}` : ""}${classes ? `.${classes}` : ""}${inHeader} "${maskText(node.textContent ?? "")}"`;
+  }
+  function installDiagConsole() {
+    let recording = null;
+    const EVENTS = ["pointerdown", "mousedown", "pointerup", "mouseup", "click", "auxclick", "focusin", "focusout", "keydown", "scroll", "resize", "blur", "visibilitychange"];
+    const stamp = () => Math.round(performance.now() - recording.start);
+    const log = (kind, detail) => recording && recording.lines.push({ t: stamp(), kind, ...detail });
+    const onEvent = (event) => log("event", {
+      type: event.type,
+      target: describeNode(event.target),
+      related: "relatedTarget" in event ? describeNode(event.relatedTarget) : void 0,
+      active: describeNode(document.activeElement),
+      defaultPrevented: event.defaultPrevented || void 0,
+      trusted: event.isTrusted
+    });
+    const onMutation = (records) => {
+      for (const record of records) {
+        if (!record.target.closest?.("header.hdr") && ![...record.addedNodes, ...record.removedNodes].some((node) => node.closest?.("header.hdr"))) continue;
+        log("mutation", {
+          what: record.type === "attributes" ? `attribute ${record.attributeName}` : "children",
+          target: describeNode(record.target),
+          added: [...record.addedNodes].map(describeNode),
+          removed: [...record.removedNodes].map(describeNode),
+          value: record.type === "attributes" ? maskText(record.target.getAttribute(record.attributeName) ?? "") : void 0
+        });
+      }
+    };
+    function stop() {
+      if (!recording) return "aucun enregistrement en cours";
+      for (const type of EVENTS) window.removeEventListener(type, onEvent, true);
+      recording.observer.disconnect();
+      clearTimeout(recording.timer);
+      const done = recording;
+      recording = null;
+      window.kyaraPlusDiag.last = { version: SURVEY_VERSION, page: location.pathname, features: [...mounted.keys()], disabled: [...disabledFeatures], lines: done.lines };
+      return `${done.lines.length} ligne(s) enregistrée(s) : kyaraPlusDiag.download() pour les sauvegarder`;
+    }
+    function menu(seconds = 15) {
+      if (recording) stop();
+      recording = { start: performance.now(), lines: [], observer: new MutationObserver(onMutation), timer: setTimeout(stop, seconds * 1e3) };
+      for (const type of EVENTS) window.addEventListener(type, onEvent, true);
+      recording.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeOldValue: false });
+      return `enregistrement pendant ${seconds} s : clique sur ton avatar maintenant, puis kyaraPlusDiag.download()`;
+    }
+    function download() {
+      if (recording) stop();
+      const data = window.kyaraPlusDiag.last;
+      if (!data) return "rien à sauvegarder : lance d’abord kyaraPlusDiag.menu()";
+      const when = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      const link = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" })), download: `kyara-diag-${when}.json` });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      return `fichier kyara-diag-${when}.json téléchargé (${data.lines.length} lignes)`;
+    }
+    const matching = (prefix) => features.filter((feature) => feature.id === prefix || feature.id.startsWith(`${prefix}-`)).map((feature) => feature.id);
+    function setDisabled(prefix, disabled) {
+      const ids = matching(prefix);
+      if (ids.length === 0) return `aucune fonction ne s’appelle « ${prefix} » : ${features.map((feature) => feature.id).join(", ")}`;
+      for (const id of ids) disabled ? disabledFeatures.add(id) : disabledFeatures.delete(id);
+      writeSetting(DISABLED_SETTING, [...disabledFeatures]);
+      syncFeatures();
+      return `${disabled ? "désactivé" : "réactivé"} : ${ids.join(", ")}`;
+    }
+    window.kyaraPlusDiag = {
+      menu,
+      stop,
+      download,
+      last: null,
+      off: (prefix) => setDisabled(prefix, true),
+      on: (prefix) => setDisabled(prefix, false),
+      features: () => features.map((feature) => `${feature.id}: ${disabledFeatures.has(feature.id) ? "désactivée" : mounted.has(feature.id) ? "active ici" : "inactive ici"}`).join("\n")
+    };
+  }
+
   var features = [
     market_counter_default,
     market_offers_default,
@@ -8680,7 +8772,7 @@ button.kp-act__stat:hover,\r
   function syncFeatures() {
     const url = new URL(location.href);
     for (const feature of features) {
-      const active = feature.matches(url);
+      const active = feature.matches(url) && !isFeatureDisabled(feature.id);
       if (active && !mounted.has(feature.id)) {
         mounted.set(feature.id, feature.mount());
       } else if (!active && mounted.has(feature.id)) {
@@ -8689,6 +8781,7 @@ button.kp-act__stat:hover,\r
       }
     }
   }
+  installDiagConsole();
   injectStylesheet(config_default.ui.iconsCss);
   injectStyles(styles_default);
   // Styles for the fair-play gauge and the multi-card profitable offers

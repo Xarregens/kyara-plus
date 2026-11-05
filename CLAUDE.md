@@ -24,7 +24,9 @@ avant d'envoyer, ne jamais toucher au vrai site autrement qu'en lecture.
 
 `node --check kyaraPlus.user.js` puis les tests de `tests/` (voir `tests/README.md`). Ils simulent le site ; ils ne
 prouvent pas la forme exacte des vraies réponses, qui vient des relevés (commandes console `kyaraPlusReleve.download()`,
-`kyaraPlusSeries.download()`, `kyaraPlusPerf()`) que le propriétaire peut fournir.
+`kyaraPlusSeries.download()`, `kyaraPlusPerf()`) que le propriétaire peut fournir. Pour isoler un conflit avec le site :
+`kyaraPlusDiag.off("<id ou préfixe>")` désactive des fonctions (réglage `disabledFeatures`), `kyaraPlusDiag.menu()` +
+`download()` enregistre événements et mutations de l'en-tête.
 
 ## Ce que le site fait (observé dans les relevés, nov. 2026)
 

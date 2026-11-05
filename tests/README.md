@@ -9,6 +9,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 
 | Script | Page | Ce qu'il vérifie |
 | --- | --- | --- |
+| `diag.cjs` | Toutes pages | Commandes `kyaraPlusDiag` : enregistrement des événements, masquage des e-mails, téléchargement, désactivation d'une fonction mémorisée au rechargement. |
 | `lossfilter.cjs` | Tableau des offres | Bouton partagé « Symbios la tepu » / « Sans aucune perte » : cartes cachées selon le côté, exclusivité des côtés. |
 | `smoke.cjs` | Tableau des offres | Temps d'apparition du tableau, de la jauge, des pastilles ; nombre de rendus ; requêtes. |
 | `interact.cjs` | Tableau des offres | Masquer / réafficher, « Voir plus », filtres, recherche, « Donner » (état occupé + refus serveur). |

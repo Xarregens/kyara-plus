@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.6
+- Commandes console de diagnostic `kyaraPlusDiag` : `off("collection")` / `on("collection")` désactivent ou réactivent
+  les fonctions d'une page (mémorisé), `features()` les liste, `menu()` puis `download()` enregistrent les événements et
+  les changements de l'en-tête pendant 15 s (e-mails masqués) pour comprendre un menu du site qui se referme.
+
 ## 2.35.5
 - Tableau des offres : le côté « Sans perte ≠ rareté » de la pilule s'appelle « Symbios la tepu » (même effet) ;
   le bouton à part de la 2.35.4 est retiré.
