@@ -4,6 +4,9 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.3
+- Bouton partagé des filtres de perte : le contour du côté actif suit la forme arrondie de la pilule.
+
 ## 2.35.2
 - Tableau des offres : le filtre « Sans perte » devient un bouton partagé à deux côtés, « Sans perte ≠ rareté »
   (cache les cartes données à perte contre une rareté différente, dans les deux sens) et « Sans aucune perte »

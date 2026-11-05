@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.2
+// @version      2.35.3
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4632,7 +4632,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.2";
+  var SURVEY_VERSION = "2.35.3";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6709,25 +6709,28 @@ body.kp-offers main section.board > :not([role='dialog']):not(:has([role='dialog
   color: var(--fg);\r
 }\r
 \r
-/* Two filters in one pill: the sides share the border, only the pressed one lights up */\r
+/* Two filters in one pill: each side keeps its own border and rounds only its outer end, so the\r
+   pressed side's accent outline follows the pill shape; it is raised above its neighbour's border. */\r
 .kp-chip-pair {\r
   display: inline-flex;\r
-  border: 1px solid var(--line2);\r
-  border-radius: var(--r-pill);\r
-  overflow: hidden;\r
 }\r
 \r
 .kp-chip-pair .kp-chip--side {\r
-  border: 0;\r
   border-radius: 0;\r
 }\r
 \r
-.kp-chip-pair .kp-chip--side + .kp-chip--side {\r
-  border-left: 1px solid var(--line2);\r
+.kp-chip-pair .kp-chip--side:first-child {\r
+  border-radius: var(--r-pill) 0 0 var(--r-pill);\r
+}\r
+\r
+.kp-chip-pair .kp-chip--side:last-child {\r
+  margin-left: -1px;\r
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;\r
 }\r
 \r
 .kp-chip-pair .kp-chip--side[aria-pressed='true'] {\r
-  box-shadow: inset 0 0 0 1px var(--acc);\r
+  position: relative;\r
+  z-index: 1;\r
 }\r
 \r
 .kp-title {\r
