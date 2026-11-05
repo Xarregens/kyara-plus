@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.7
+// @version      2.35.8
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4642,7 +4642,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.7";
+  var SURVEY_VERSION = "2.35.8";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6644,17 +6644,32 @@ Continuer ?`);
   };
 
   // src/lib/router.js
+  // The site's router may hold its own reference to the native pushState (taken before this script ran), in which case
+  // the patched methods below never see its navigations. The URL is therefore also compared on every DOM change and on
+  // the Navigation API, so a page reached through the site's own links mounts its features like a page loaded directly.
   function onNavigate(callback) {
+    let seen = location.href;
+    const run = () => {
+      seen = location.href;
+      callback();
+    };
+    const checkUrl = () => {
+      if (location.href !== seen) run();
+    };
     for (const method of ["pushState", "replaceState"]) {
       const original = history[method];
       history[method] = function(...args) {
         const result = original.apply(this, args);
-        queueMicrotask(callback);
+        queueMicrotask(run);
         return result;
       };
     }
-    addEventListener("popstate", callback);
-    callback();
+    addEventListener("popstate", run);
+    addEventListener("hashchange", checkUrl);
+    window.navigation?.addEventListener?.("currententrychange", () => queueMicrotask(checkUrl));
+    new MutationObserver(checkUrl).observe(document.documentElement, { childList: true, subtree: true });
+    setInterval(checkUrl, 1e3);
+    run();
   }
 
   // src/styles.css
@@ -8674,8 +8689,31 @@ button.kp-act__stat:hover,\r
   //   kyaraPlusDiag.menu()             → records for 15 s every pointer/focus/scroll event and header mutation,
   //                                      then kyaraPlusDiag.download() saves the recording (e-mails masked)
   var DISABLED_SETTING = "disabledFeatures";
-  var disabledFeatures = new Set(readSetting(DISABLED_SETTING, []));
+  // The switches serve one investigation: they are kept across reloads but dropped by the next version of the script,
+  // so a feature switched off while looking into a problem never stays off once the fix is installed.
+  function readDisabledFeatures() {
+    const stored = readSetting(DISABLED_SETTING, null);
+    if (!stored) return [];
+    if (Array.isArray(stored) || stored.version !== SURVEY_VERSION) {
+      writeSetting(DISABLED_SETTING, null);
+      return [];
+    }
+    return stored.ids ?? [];
+  }
+  var disabledFeatures = new Set(readDisabledFeatures());
   var isFeatureDisabled = (id) => disabledFeatures.has(id);
+  var announcedDisabled = "";
+  // On a page where switched-off features would run, say so once: a page missing its tools is otherwise a mystery
+  function announceDisabledFeatures(url) {
+    const ids = features.filter((feature) => isFeatureDisabled(feature.id) && feature.matches(url)).map((feature) => feature.id);
+    const key = ids.length ? `${url.pathname} ${ids.join(",")}` : "";
+    if (key === announcedDisabled) return;
+    announcedDisabled = key;
+    if (!ids.length) return;
+    const prefix = ids[0].split("-")[0];
+    const target = ids.every((id) => id.split("-")[0] === prefix) ? prefix : ids[0];
+    toast(`Kyara Plus : fonctions désactivées par kyaraPlusDiag.off : ${ids.join(", ")}. Dans la console, kyaraPlusDiag.on("${target}") pour les réactiver.`);
+  }
   var maskText = (text) => text.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/\s+/g, " ").trim().slice(0, 32);
   function describeNode(node) {
     if (!node || node === window) return node === window ? "window" : String(node);
@@ -8744,7 +8782,7 @@ button.kp-act__stat:hover,\r
       const ids = matching(prefix);
       if (ids.length === 0) return `aucune fonction ne s’appelle « ${prefix} » : ${features.map((feature) => feature.id).join(", ")}`;
       for (const id of ids) disabled ? disabledFeatures.add(id) : disabledFeatures.delete(id);
-      writeSetting(DISABLED_SETTING, [...disabledFeatures]);
+      writeSetting(DISABLED_SETTING, disabledFeatures.size ? { version: SURVEY_VERSION, ids: [...disabledFeatures] } : null);
       syncFeatures();
       return `${disabled ? "désactivé" : "réactivé"} : ${ids.join(", ")}`;
     }
@@ -8781,6 +8819,7 @@ button.kp-act__stat:hover,\r
   var mounted = /* @__PURE__ */ new Map();
   function syncFeatures() {
     const url = new URL(location.href);
+    announceDisabledFeatures(url);
     for (const feature of features) {
       const active = feature.matches(url) && !isFeatureDisabled(feature.id);
       if (active && !mounted.has(feature.id)) {

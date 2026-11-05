@@ -37,11 +37,14 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
     if (p === '/marche') return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><header class="hdr"><nav class="nav"><a class="navlink on" href="/marche">Marché</a></nav></header><main><div class="wrap"><div class="layout"><div role="tablist"><button role="tab" class="on">Offres</button></div><section class="board"><div class="bh"><button class="btn-acc">Proposer</button></div></section><aside class="chat-side"></aside></div></div></main></body></html>` });
     return route.fulfill({ status: 404, body: '' });
   });
-  await page.addInitScript(() => { localStorage.setItem('kyara_token', 'fake'); localStorage.setItem('kyara_device', 'dev'); });
+  // an old-style switch list (2.35.6, plain array) is dropped at start: it never survives a new version of the script
+  await page.addInitScript(() => { localStorage.setItem('kyara_token', 'fake'); localStorage.setItem('kyara_device', 'dev'); if (!localStorage.getItem('kyara-plus:settings')) localStorage.setItem('kyara-plus:settings', JSON.stringify({ disabledFeatures: ['market-offers', 'collection-albums'] })); });
   await page.goto('https://kyara.games/marche?onglet=offres');
   await page.addScriptTag({ content: script });
   await page.waitForFunction(() => /\d+ offres?$/.test(document.querySelector('.kp-board .kp-muted')?.textContent ?? ''), null, { timeout: 30000 });
   const out = {};
+  out.version = script.match(/@version\s+(\S+)/)[1];
+  out.oldFormatDropped = await page.evaluate(() => (JSON.parse(localStorage.getItem('kyara-plus:settings')).disabledFeatures ?? null) === null && Boolean(document.querySelector('.kp-board')));
   out.features = await page.evaluate(() => kyaraPlusDiag.features().split('\n').filter((l) => /market-offers|collection-ghosts|header-nav/.test(l)));
   out.started = await page.evaluate(() => kyaraPlusDiag.menu(5));
   await page.click('.kp-filters .kp-chip:has-text("Ma wishlist")'); await page.waitForTimeout(100);
@@ -58,12 +61,20 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.stored = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).disabledFeatures);
   await page.reload(); await page.addScriptTag({ content: script }); await page.waitForTimeout(1500);
   out.boardStillGoneAfterReload = await page.evaluate(() => !document.querySelector('.kp-board'));
+  out.toastAfterReload = await page.evaluate(() => document.querySelector('.kp-toast')?.textContent ?? '');
+  // the same switch stored by another version is dropped at start
+  await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('kyara-plus:settings')); s.disabledFeatures.version = '0.0.0'; localStorage.setItem('kyara-plus:settings', JSON.stringify(s)); });
+  await page.reload(); await page.addScriptTag({ content: script }); await page.waitForTimeout(1500);
+  out.boardBackAfterUpdate = await page.evaluate(() => Boolean(document.querySelector('.kp-board')));
+  out.storedAfterUpdate = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).disabledFeatures ?? null);
+  await page.evaluate(() => kyaraPlusDiag.off('market-offers')); await page.waitForTimeout(100);
   out.on = await page.evaluate(() => kyaraPlusDiag.on('market-offers'));
   await page.waitForTimeout(300);
   out.boardBack = await page.evaluate(() => Boolean(document.querySelector('.kp-board')));
   out.errors = errors;
   const ok = out.lines.some((l) => /^click button\.kp-chip/.test(l)) && /<email>/.test(out.mask ?? '') && /^kyara-diag-.*\.json$/.test(out.downloadName)
-    && out.boardGone && out.stored.join() === 'market-offers' && out.boardStillGoneAfterReload && out.boardBack && errors.length === 0;
+    && out.oldFormatDropped && out.boardGone && out.stored.ids.join() === 'market-offers' && out.stored.version === out.version && out.boardStillGoneAfterReload
+    && /désactivées par kyaraPlusDiag\.off : market-offers\./.test(out.toastAfterReload) && out.boardBackAfterUpdate && out.storedAfterUpdate === null && out.boardBack && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

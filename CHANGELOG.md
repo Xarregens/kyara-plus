@@ -4,6 +4,14 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.8
+- Collection : la barre de filtres des albums (Min. / Max. persos, « Il ne manque que », « Masquer les déjà réclamées »)
+  et les cartes manquantes d'un album pouvaient manquer quand on arrivait sur la page par un lien du site (sans
+  rechargement) : le script ne voyait pas toujours ces changements de page. Il les détecte maintenant dans tous les cas,
+  pour toutes les pages (Marché, Mon activité, Collection…).
+- Les interrupteurs `kyaraPlusDiag.off(...)` s'effacent à l'installation d'une nouvelle version, et un message signale
+  les fonctions encore éteintes sur la page où elles devraient tourner.
+
 ## 2.35.7
 - Collection, vue Cartes : le menu du profil se refermait aussitôt ouvert. Les filtres d'albums mémorisés faisaient
   cliquer en boucle le « Afficher plus » des cartes (pris pour celui des albums), et chaque clic fermait le menu comme
