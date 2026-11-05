@@ -46,11 +46,13 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
     const info = (el) => { const n = Number(el.querySelector('.kp-name').textContent.replace('Perso ', '')); return { rarity: RARITIES[n % 6], price: 200 + (n * 37) % 4000 }; };
     const offers = [...document.querySelectorAll('.kp-board .kp-offer')].map((offer) => {
       const got = info(offer.querySelector('.kp-offer__get'));
-      return [...offer.querySelectorAll('.kp-option')].map((tile) => { const give = info(tile); return { sameRarity: give.rarity === got.rarity, loss: got.price - give.price <= 0 }; });
+      // site order: M > L > E > R > U > C ; an unknown rarity ranks lowest
+      const rank = (r) => { const i = ['M', 'L', 'E', 'R', 'U', 'C'].indexOf(r); return i === -1 ? 6 : i; };
+      return [...offer.querySelectorAll('.kp-option')].map((tile) => { const give = info(tile); return { sameRarity: give.rarity === got.rarity, loss: got.price - give.price <= 0, downgrade: rank(give.rarity) < rank(got.rarity) }; });
     });
     const tiles = offers.flat();
     return { status: document.querySelector('.kp-board .kp-muted').textContent, offers: offers.length, tiles: tiles.length,
-      crossLoss: tiles.filter((t) => t.loss && !t.sameRarity).length, sameLoss: tiles.filter((t) => t.loss && t.sameRarity).length };
+      crossLoss: tiles.filter((t) => t.loss && !t.sameRarity).length, sameLoss: tiles.filter((t) => t.loss && t.sameRarity).length, downgrades: tiles.filter((t) => t.downgrade).length };
   }, RARITIES);
   const pressed = () => page.evaluate(() => [...document.querySelectorAll('.kp-chip-pair .kp-chip--side')].map((b) => b.getAttribute('aria-pressed')));
   const LEFT = '.kp-chip-pair .kp-chip--side:has-text("Sans perte ≠ rareté")';
@@ -66,11 +68,21 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.backToCross = { ...(await snapshot()), pressed: await pressed() };
   await page.click(LEFT); await page.waitForTimeout(150);
   out.off = { ...(await snapshot()), pressed: await pressed() };
+  const DOWN = '.kp-filters > .kp-chip:has-text("Symbios la tepu")';
+  await page.click(DOWN); await page.waitForTimeout(150);
+  out.down = { ...(await snapshot()), pressed: await pressed(), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
+  await page.click(RIGHT); await page.waitForTimeout(150);
+  out.downAndAll = { ...(await snapshot()), pressed: await pressed(), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
+  await page.click(DOWN); await page.click(RIGHT); await page.waitForTimeout(150);
+  out.end = { ...(await snapshot()), downPressed: await page.getAttribute(DOWN, 'aria-pressed') };
   out.errors = errors;
   const ok = out.before.crossLoss > 0
     && out.cross.crossLoss === 0 && out.cross.sameLoss > 0 && out.cross.pressed.join() === 'true,false'
     && out.all.crossLoss === 0 && out.all.sameLoss === 0 && out.all.pressed.join() === 'false,true'
     && out.backToCross.pressed.join() === 'true,false' && out.off.pressed.join() === 'false,false' && out.off.tiles === out.before.tiles
+    && out.before.downgrades > 0 && out.down.downgrades === 0 && out.down.downPressed === 'true' && out.down.pressed.join() === 'false,false'
+    && out.downAndAll.downgrades === 0 && out.downAndAll.crossLoss === 0 && out.downAndAll.sameLoss === 0 && out.downAndAll.downPressed === 'true' && out.downAndAll.pressed.join() === 'false,true'
+    && out.end.tiles === out.before.tiles && out.end.downPressed === 'false'
     && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
