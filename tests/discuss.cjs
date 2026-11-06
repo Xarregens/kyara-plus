@@ -85,11 +85,17 @@ const echanges = { trades: [trade('t1', true, 'accepted'), trade('t2', false, 'a
   // the sent trade has its button too, with no messages
   await page.click('.kp-act__sub:has-text("Envoyés")'); await settle();
   out.outButton = await page.evaluate(() => document.querySelector('#kp-act-t\\:p2 .kp-act__talk-btn')?.textContent ?? '');
+  // an address kept from the old "Discuter" link stays in this view and opens the discussion of that trade
+  await page.goto('https://kyara.games/marche?onglet=echanges&echange=p1&discussion=1');
+  await page.addScriptTag({ content: script });
+  await page.waitForFunction((row) => document.querySelectorAll(`${row} .kp-talk__msg`).length >= 2, row, { timeout: 15000 }).catch(() => {});
+  out.fromAddress = await read();
   out.errors = errors;
   const ok = out.before.button === 'Discuter (2)' && !out.before.box
     && out.opened.box && out.opened.pressed === 'true' && out.opened.bubbles.join(' | ') === 'lui: Salut, ça te va ? | moi: Je regarde' && !out.opened.native && out.opened.url === '/marche?onglet=echanges'
     && out.posted.length === 1 && out.posted[0].text === 'test' && out.sent.bubbles.at(-1) === 'moi: test' && out.sent.button === 'Discuter (3)' && out.inputAfterSend === ''
-    && !out.closed.box && out.closed.pressed === 'false' && out.outButton === 'Discuter' && errors.length === 0;
+    && !out.closed.box && out.closed.pressed === 'false' && out.outButton === 'Discuter'
+    && !out.fromAddress.native && out.fromAddress.box && out.fromAddress.bubbles.length >= 2 && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

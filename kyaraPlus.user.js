@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.26
+// @version      2.35.27
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -2984,7 +2984,7 @@ Continuer ?`);
       writeSetting("activityLedger", ledgerOpen);
       patchView({ ledgerOpen });
     }
-    async function focusTrade(tradeId) {
+    async function focusTrade(tradeId, { talk: openTalk = false } = {}) {
       const key = `t:${tradeId}`;
       const find = () => state().items.find((item2) => item2.key === key);
       let item = find();
@@ -3006,6 +3006,7 @@ Continuer ?`);
         shown: Math.max(state().view.shown, state().items.length)
       });
       patch({ focus: { key, until: clock.now() + config_default.activity.focusMs } });
+      if (openTalk && !state().talks[key]?.open) talk.toggle(item);
     }
     function setBusy(key, busy) {
       const next = new Set(state().busy);
@@ -4105,9 +4106,8 @@ Continuer ?`);
         if (tradeId === focusedTrade) return;
         focusedTrade = tradeId;
         if (!tradeId) return;
-        // "Discuter" / "Ouvrir" ask for the site's discussion box, which only exists in the site's own view
-        if (params.get("discussion") === "1") return controller.setNative(true);
-        if (!store.get().view.native) controller.focusTrade(tradeId);
+        // an address asking for a trade (and its discussion, as the old "Discuter" link did) opens it here, in this view
+        if (!store.get().view.native) controller.focusTrade(tradeId, { talk: params.get("discussion") === "1" });
       };
       const urlTimer = setInterval(watchUrl, URL_WATCH_MS);
       controller.setSub(FIRST_CATEGORY[new URLSearchParams(location.search).get("onglet")]);
@@ -5039,7 +5039,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.26";
+  var SURVEY_VERSION = "2.35.27";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

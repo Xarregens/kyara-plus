@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.27
+- Mon activité : une adresse gardant `discussion=1` (ancien bouton « Discuter ») basculait la page sur la vue du site
+  au chargement. Elle ouvre maintenant l'échange et sa discussion dans la vue Kyara Plus.
+
 ## 2.35.26
 - Mon activité, échanges directs : la discussion est dans la ligne, sans quitter la vue Kyara Plus. « Discuter (N) »
   déplie les messages (ceux du site, lus à `/trades/<id>/messages`, plus le message de la proposition), une case pour
