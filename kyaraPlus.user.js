@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.16
+// @version      2.35.17
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4865,7 +4865,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.16";
+  var SURVEY_VERSION = "2.35.17";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5113,7 +5113,15 @@ Continuer ?`);
       patch({ enabled, stopReason: null, giftLimited: 0, ...fresh });
       if (enabled) drain();
     }
+    // The rules are frozen while the auto-accept runs: a change would apply at once, and a threshold being retyped
+    // ("500" → "" → "200") would let anything through for a moment. Stop, change, start again.
+    function locked() {
+      if (!auto().enabled) return false;
+      toast("Arrête l’auto-accept avant de modifier ses règles.", "error");
+      return true;
+    }
     function toggleRule(key) {
+      if (locked()) return;
       const rules = new Set(auto().rules);
       if (rules.has(key)) rules.delete(key);
       else rules.add(key);
@@ -5122,17 +5130,20 @@ Continuer ?`);
       drain();
     }
     function setDoublesOnly(doublesOnly) {
+      if (locked()) return;
       writeSetting("autoDoublesOnly", doublesOnly);
       patch({ doublesOnly });
       drain();
     }
     function setGainRule({ gainEnabled = auto().gainEnabled, minGain = auto().minGain }) {
+      if (locked()) return;
       writeSetting("autoGainEnabled", gainEnabled);
       writeSetting("autoMinGain", minGain);
       patch({ gainEnabled, minGain });
       drain();
     }
     function setRowMinGain(give, value) {
+      if (locked()) return;
       const rowMinGain = { ...auto().rowMinGain };
       if (value == null) delete rowMinGain[give];
       else rowMinGain[give] = value;
@@ -5818,25 +5829,32 @@ Continuer ?`);
     toggle.addEventListener("click", () => controller.setAuto(!enabled));
     gainCheck.addEventListener("change", () => controller.setAutoGainRule({ gainEnabled: gainCheck.checked }));
     doublesCheck.addEventListener("change", () => controller.setAutoDoublesOnly(doublesCheck.checked));
-    const shortcut = (label, checked) => h("button", { class: "kp-auto__shortcut", type: "button", onClick: () => setAll(checked) }, label);
+    const shortcuts = [];
+    const shortcut = (label, checked) => {
+      const button = h("button", { class: "kp-auto__shortcut", type: "button", onClick: () => setAll(checked) }, label);
+      shortcuts.push(button);
+      return button;
+    };
+    const LOCKED_TITLE = "Arrête l’auto-accept pour modifier ses règles : elles sont figées tant qu’il tourne.";
+    const rulesBlock = h(
+      "div",
+      { class: "kp-rule-rows" },
+      h(
+        "div",
+        { class: "kp-rule-rows__head" },
+        h("span", { class: "kp-label" }, "Je donne"),
+        h("span", { class: "kp-label" }, "j’accepte en retour"),
+        h("span", { class: "kp-auto__shortcuts" }, shortcut("tout", true), "·", shortcut("rien", false)),
+        h("span", { class: "kp-label kp-rule-rows__floor", title: "Gain minimum par ligne, optionnel : utile quand une carte de rareté inférieure vaut plus que celle reçue. Pour une même rareté (⇄), sans seuil, le gain doit être positif ou nul." }, "si gain ≥")
+      ),
+      GIVEN.map(ruleRow)
+    );
     const root = h(
       "div",
       { class: "kp-side__block kp-auto" },
       h("div", { class: "kp-auto__head" }, h("h3", { class: "kp-title kp-title--sm" }, "Auto-accept"), toggle),
       status,
-      h(
-        "div",
-        { class: "kp-rule-rows" },
-        h(
-          "div",
-          { class: "kp-rule-rows__head" },
-          h("span", { class: "kp-label" }, "Je donne"),
-          h("span", { class: "kp-label" }, "j’accepte en retour"),
-          h("span", { class: "kp-auto__shortcuts" }, shortcut("tout", true), "·", shortcut("rien", false)),
-          h("span", { class: "kp-label kp-rule-rows__floor", title: "Gain minimum par ligne, optionnel : utile quand une carte de rareté inférieure vaut plus que celle reçue. Pour une même rareté (⇄), sans seuil, le gain doit être positif ou nul." }, "si gain ≥")
-        ),
-        GIVEN.map(ruleRow)
-      ),
+      rulesBlock,
       h(
         "label",
         { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, toute offre dont le gain (prix moyen de la carte reçue moins prix moyen de la carte donnée) atteint ce montant." },
@@ -5860,11 +5878,21 @@ Continuer ?`);
       toggle.title = toggle.disabled ? "Coche au moins une règle pour pouvoir activer" : enabled ? "Arrêter l’acceptation automatique" : "Lancer l’acceptation automatique";
       doublesCheck.checked = auto.doublesOnly;
       gainCheck.checked = auto.gainEnabled;
-      gainInput.disabled = !auto.gainEnabled;
+      gainInput.disabled = !auto.gainEnabled || enabled;
       if (document.activeElement !== gainInput) gainInput.value = String(auto.minGain);
-      for (const [key, button] of cells) button.setAttribute("aria-pressed", String(auto.rules.has(key)));
+      // everything that defines what gets accepted is locked while it runs
+      root.classList.toggle("kp-auto--locked", enabled);
+      rulesBlock.title = enabled ? LOCKED_TITLE : "";
+      doublesCheck.disabled = enabled;
+      gainCheck.disabled = enabled;
+      for (const button of shortcuts) button.disabled = enabled;
+      for (const [key, button] of cells) {
+        button.setAttribute("aria-pressed", String(auto.rules.has(key)));
+        button.disabled = enabled;
+      }
       for (const [give, input] of rowInputs) {
         const floor = auto.rowMinGain?.[give];
+        input.disabled = enabled;
         if (document.activeElement !== input) input.value = floor == null ? "" : String(floor);
       }
       logTitle.hidden = auto.session.count === 0 && auto.log.length === 0;
@@ -9299,6 +9327,8 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-auto__shortcuts { display: inline-flex; align-items: center; gap: 4px; color: var(--mut); font-size: 11px; }
 .kp-auto__shortcut { padding: 0; border: 0; background: none; color: var(--fg2); font: inherit; text-decoration: underline dotted; cursor: pointer; }
 .kp-auto__shortcut:hover { color: var(--fg); }
+.kp-auto--locked .kp-rule-rows, .kp-auto--locked .kp-check { opacity: 0.55; cursor: not-allowed; }
+.kp-auto--locked .kp-rule-chip, .kp-auto--locked .kp-auto__shortcut, .kp-auto--locked .kp-rule-row__gain, .kp-auto--locked .kp-check__box, .kp-auto--locked .kp-check .kp-input { cursor: not-allowed; }
 .kp-check { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--fg); font-size: var(--t-sm); cursor: pointer; }
 .kp-check__box { width: 16px; height: 16px; margin: 0; accent-color: var(--acc); cursor: pointer; }
 .kp-check .kp-input--short { width: 76px; }

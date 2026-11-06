@@ -60,7 +60,18 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '1'); await page.waitForTimeout(100);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")');
   await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 3, null, { timeout: 20000 });
+  // while it runs, the rules are frozen: controls disabled, a click on a chip changes nothing and says why
+  const lockState = () => page.evaluate(() => ({
+    locked: document.querySelector('.kp-auto').classList.contains('kp-auto--locked'),
+    chipsDisabled: [...document.querySelectorAll('.kp-rule-chip')].every((c) => c.disabled),
+    inputsDisabled: [...document.querySelectorAll('.kp-rule-row__gain')].every((i) => i.disabled) && document.querySelector('.kp-check .kp-input').disabled && [...document.querySelectorAll('.kp-check__box')].every((c) => c.disabled) && [...document.querySelectorAll('.kp-auto__shortcut')].every((b) => b.disabled),
+    pressed: document.querySelectorAll('.kp-rule-chip[aria-pressed="true"]').length,
+  }));
+  out.lockedWhileRunning = await lockState();
+  await page.evaluate(() => document.querySelector('.kp-rule-chip[aria-pressed="true"]').dispatchEvent(new MouseEvent('click', { bubbles: true }))); await page.waitForTimeout(100);
+  out.afterForcedClick = { pressed: (await lockState()).pressed, toast: await page.evaluate(() => [...document.querySelectorAll('.kp-toast')].map((t) => t.textContent).find((t) => /Arrête l’auto-accept/.test(t)) ?? '') };
   await page.click('.kp-auto__head .kp-btn:has-text("Arrêter")'); await page.waitForTimeout(300);
+  out.unlockedAfterStop = await lockState();
   out.afterRun = await read();
   out.acceptedCalls = accepted.length;
   // the sum shown equals the sum of the rows' badges (every exchange has known prices here)
@@ -76,6 +87,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.afterRestart = await read();
   out.errors = errors;
   const ok = out.initial.titleHidden && out.initial.total === ''
+    && out.lockedWhileRunning.locked && out.lockedWhileRunning.chipsDisabled && out.lockedWhileRunning.inputsDisabled && out.afterForcedClick.pressed === out.lockedWhileRunning.pressed && /Arrête l’auto-accept/.test(out.afterForcedClick.toast) && !out.unlockedAfterStop.locked && !out.unlockedAfterStop.chipsDisabled && !out.unlockedAfterStop.inputsDisabled
     && out.afterRun.rows.length >= 3 && out.afterRun.rows.every((r) => /kp-gain--(up|down|flat)/.test(r)) && out.sumOfRows === out.shownTotal
     && new RegExp(`^${out.afterRun.rows.length} échanges · depuis \\d\\d:\\d\\d$`).test(out.afterRun.total) && /kp-gain--up$/.test(out.afterRun.totalGain)
     && /Par rareté donnée :\n/.test(out.afterRun.totalTitle) && out.afterRun.stored.session.count === out.afterRun.rows.length
