@@ -40,12 +40,13 @@ const dialog = `<div role="dialog" aria-modal="true" tabindex="-1" class="box wi
     return {
       afterSiteBand: v.previousElementSibling?.classList.contains('verdict') ?? false,
       status: v.querySelector('.kp-verdict__status').textContent + ' | ' + v.querySelector('.kp-verdict__status').className.replace(/kp-verdict__status\s*/g, '').trim(),
-      rows: [...v.querySelectorAll('.kp-verdict__row')].map((r) => r.querySelector('.kp-verdict__who').textContent + ' : ' + [...r.querySelectorAll('.kp-cost')].map((c) => `${c.textContent} [${c.className.match(/kp-cost--(\w+)/)[1]}]`).join(' · ')),
+      rows: [...v.querySelectorAll('.kp-verdict__row')].map((r) => r.querySelector('.kp-verdict__who').textContent + ' : ' + [...r.querySelectorAll('.kp-cost')].map((c) => `${[...c.childNodes].map((n) => n.classList?.contains('kp-verdict__arrow') ? ' → ' : n.textContent).join('')} [${c.className.match(/kp-cost--(\w+)/)[1]}]`).join(' · ')),
       titles: [...v.querySelectorAll('.kp-verdict__row .kp-cost')].map((c) => c.title),
     };
   });
   const setTotals = (mine, theirs) => page.evaluate(([a, b]) => { const t = document.querySelectorAll('.trays .total'); t[0].textContent = `≈ ${a} ◆`; t[1].textContent = `≈ ${b} ◆`; }, [mine, theirs]);
   out.initial = await read();
+  out.arrowIcon = await page.evaluate(() => Boolean(document.querySelector('.kp-verdict .kp-cost .kp-verdict__arrow i.fa-arrow-right-long')));
   await setTotals('2 000', '100'); await page.waitForTimeout(150);
   out.giving = await read();
   await setTotals('100', '20 000'); await page.waitForTimeout(150);
@@ -58,7 +59,7 @@ const dialog = `<div role="dialog" aria-modal="true" tabindex="-1" class="box wi
   out.errors = errors;
   const norm = (s) => s.replace(/[\s  ]/g, ' ');
   const rows = (r) => r.rows.map(norm);
-  const ok = !out.beforeOpen && out.initial.afterSiteBand
+  const ok = out.arrowIcon && !out.beforeOpen && out.initial.afterSiteBand
     && /devrait passer/.test(out.initial.status) && /--ok/.test(out.initial.status)
     && rows(out.initial)[0] === 'Toi : Dons 9 215 → 8 961 [gift] · Écart 15 726 → 15 303 [free]' && rows(out.initial)[1] === 'ItoVeVe : Dons 10 000 [none] · Écart 20 000 [none]' && rows(out.initial)[2] === 'Entre vous : Dons 3 000 → 2 746 [gift] · Écart 5 000 → 4 323 [free]'
     && /9 215 ◆ disponibles avant cet échange, 8 961 ◆ après \(10 000 ◆ au maximum\)/.test(norm(out.initial.titles[0])) && /15 303 ◆ après \(20 000 ◆ au maximum\)/.test(norm(out.initial.titles[1])) && /3 000 ◆ disponibles avant cet échange, 2 746 ◆ après \(3 000 ◆ au maximum\)/.test(norm(out.initial.titles[4]))

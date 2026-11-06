@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.14
+- Bloc Fair-play de l'échange : la flèche « avant → après » des pastilles devient une vraie flèche, lisible (elle
+  ressemblait à un signe moins).
+
 ## 2.35.13
 - Bloc Fair-play de « Proposer un échange » : chaque pastille montre ce qui reste sur la barre avant puis après
   l'échange (« Dons 10 000 → 9 570 »), pour les barres de chaque joueur comme pour la limite entre vous deux

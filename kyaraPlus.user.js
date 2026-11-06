@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.13
+// @version      2.35.14
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4207,7 +4207,8 @@ Continuer ?`);
     let text;
     if (over > 0) text = `${label} manque ${formatNumber(over)}`;
     else if (left == null) text = amount > 0 ? `${label} −${formatNumber(amount)}` : `${label} 0`;
-    else text = amount > 0 ? `${label} ${formatNumber(left)} → ${formatNumber(left - amount)}` : `${label} ${formatNumber(left)}`;
+    // the arrow is an icon: in the pill's digit font "→" is tiny and reads like a minus sign
+    else text = amount > 0 ? [`${label} ${formatNumber(left)}`, h("span", { class: "kp-verdict__arrow" }, icon("arrow-right-long")), formatNumber(left - amount)] : `${label} ${formatNumber(left)}`;
     const detail = left == null ? "" : amount > 0 ? ` ${label} : ${formatChakra(left)} disponibles avant cet échange, ${formatChakra(left - amount)} après${full != null ? ` (${formatChakra(full)} au maximum)` : ""}.` : ` ${label} : ${formatChakra(left)} disponibles, inchangé${full != null ? ` (${formatChakra(full)} au maximum)` : ""}.`;
     return h("span", { class: `kp-cost kp-cost--${tone2} kp-cost--compact`, title: `${explain}${detail}` }, h("span", { class: "kp-cost__dot" }), text);
   }
@@ -4831,7 +4832,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.13";
+  var SURVEY_VERSION = "2.35.14";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9228,6 +9229,7 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-verdict__who { overflow: hidden; color: var(--fg2); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
 .kp-verdict .kp-costs { justify-content: flex-start; }
 .kp-verdict .kp-cost { cursor: help; }
+.kp-verdict__arrow { display: inline-flex; align-items: center; margin: 0 5px; font-size: 12px; line-height: 1; }
 .kp-auto__section { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--line2); }
 .kp-auto__subtitle { margin: 0; color: var(--fg); font-size: var(--t-sm); font-weight: 700; }
 .kp-auto__subtitle--log { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
