@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.23
+// @version      2.35.24
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -3269,10 +3269,11 @@ Continuer ?`);
       ];
     }
     const message = item.message ? ["Message", `« ${item.message} »`] : null;
-    const talkHref = item.trade && `/marche?onglet=echanges&echange=${item.trade.id}&discussion=1`;
-    const talk = item.trade ? ["Discussion", link(talkHref, `Ouvrir (${item.messages})`)] : null;
+    const talk = item.trade ? ["Discussion", link(talkHref(item), `Ouvrir dans la vue du site (${plural(item.messages, "message")})`)] : null;
     return [message, talk];
   }
+  // The discussion of a trade is the site's own (message box under the trade): the link opens the site's view on it
+  var talkHref = (item) => `/marche?onglet=echanges&echange=${item.trade.id}&discussion=1`;
   function hasOverflow(item) {
     const limit = config_default.activity.compactThumbLimit;
     return [item.give.cards, item.receive.cards, item.choice ?? []].some((list) => list.length > limit);
@@ -3313,9 +3314,9 @@ Continuer ?`);
     const open = (label, href) => h("a", { class: "kp-btn kp-btn--sm kp-btn--ghost", href }, label);
     switch (item.kind) {
       case "tradeIn":
-        return item.state === State.TODO ? [button("Accepter", actions2.accept, { ghost: false }), button("Refuser", actions2.decline)] : [];
+        return item.state === State.TODO ? [button("Accepter", actions2.accept, { ghost: false }), button("Refuser", actions2.decline), open("Discuter", talkHref(item))] : [];
       case "tradeOut":
-        return item.state === State.LIVE ? [button("Annuler", actions2.cancelTrade)] : [];
+        return item.state === State.LIVE ? [button("Annuler", actions2.cancelTrade), open("Discuter", talkHref(item))] : [];
       case "counter":
         return item.state === State.LIVE ? [button("Retirer", actions2.cancelOffer)] : [];
       case "order":
@@ -4028,10 +4029,14 @@ Continuer ?`);
       });
       const detach = keepAttached(panel.root, ACTIVITY_PANEL, (tabpanel, node) => tabpanel.prepend(node));
       const watchUrl = () => {
-        const tradeId = new URLSearchParams(location.search).get("echange");
+        const params = new URLSearchParams(location.search);
+        const tradeId = params.get("echange");
         if (tradeId === focusedTrade) return;
         focusedTrade = tradeId;
-        if (tradeId && !store.get().view.native) controller.focusTrade(tradeId);
+        if (!tradeId) return;
+        // "Discuter" / "Ouvrir" ask for the site's discussion box, which only exists in the site's own view
+        if (params.get("discussion") === "1") return controller.setNative(true);
+        if (!store.get().view.native) controller.focusTrade(tradeId);
       };
       const urlTimer = setInterval(watchUrl, URL_WATCH_MS);
       controller.setSub(FIRST_CATEGORY[new URLSearchParams(location.search).get("onglet")]);
@@ -4963,7 +4968,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.23";
+  var SURVEY_VERSION = "2.35.24";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

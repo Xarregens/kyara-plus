@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.24
+- Mon activité, échanges directs : bouton « Discuter » sur chaque échange à traiter ou envoyé, à côté d'Accepter /
+  Refuser / Annuler, qui ouvre la vue du site sur cet échange (la boîte de messages est celle du site). Le lien
+  « Ouvrir » du détail faisait auparavant défiler la vue Kyara Plus sans rien montrer.
+
 ## 2.35.23
 - Auto-accept : parmi les cartes qui respectent les règles, il choisit la plus rentable **que le fair-play devrait
   accepter** (barres et limites connues), comme le bouton jaune du panneau, au lieu de la plus rentable tout court.
