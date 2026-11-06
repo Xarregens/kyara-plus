@@ -29,6 +29,8 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
 - Chargement plus rapide (requêtes en parallèle, rendus regroupés) et lectures de fair-play périmées ignorées.
 
 **Auto-accept**
+- Choisit la carte la plus rentable que le fair-play devrait accepter ; retente une fois avec la carte suivante si le site
+  refuse.
 - Une ligne par rareté donnée, pastilles des raretés acceptées en retour, dont la même rareté (⇄) ; gain minimum par ligne
   (`gain ≥`) ; règle globale « Ou si gain ≥ » ; « Seulement mes doublons » ; « Seulement les cartes qu'il me manque » ;
   raccourcis tout / rien.

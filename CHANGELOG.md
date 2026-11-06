@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.23
+- Auto-accept : parmi les cartes qui respectent les règles, il choisit la plus rentable **que le fair-play devrait
+  accepter** (barres et limites connues), comme le bouton jaune du panneau, au lieu de la plus rentable tout court.
+  Une offre dont aucune carte ne passe n'est plus tentée. Si le site refuse quand même (compteurs périmés), l'offre
+  est retentée une fois avec la carte suivante au lieu d'être abandonnée.
+
 ## 2.35.22
 - Mon activité : la page ne remonte plus toute seule quand on a fait défiler une longue liste (Tableau avec les offres
   mémorisées, par exemple). À chaque rafraîchissement, toutes les lignes étaient reconstruites et replacées, et le

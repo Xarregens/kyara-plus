@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.22
+// @version      2.35.23
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4575,7 +4575,10 @@ Continuer ?`);
   }
 
   var ruleKey = (giveRarity, receiveRarity) => `${giveRarity}>${receiveRarity}`;
-  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {} }) {
+  // fair: my bars and the limits with the partner when known; a card the site should refuse is then never chosen while
+  // another passes (the most profitable passing card wins, like the yellow button of the side panel). Unknown bars =
+  // no filter. refused(cardId): cards the site already refused for this offer (retried with the next one).
+  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {} }, fair = null, refused = () => false) {
     // "only the cards I lack": an offer of a card I already own is never taken on its own
     if (missingOnly && analysis.owned > 0) return null;
     // a rarity rule also needs the row's minimum gain when one is set (an Epic can be worth more than a Legendary); unknown price = no
@@ -4586,15 +4589,16 @@ Continuer ?`);
       return floor == null || option.gain != null && option.gain >= floor;
     };
     const ruleMatches = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) || minGain != null && option.gain != null && option.gain >= minGain;
-    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && ruleMatches(option);
+    const passes = (option) => !refused(option.card.id) && (!fair || passesFairPlay(analysis, option, fair));
+    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && ruleMatches(option) && passes(option);
     const double = bestOption(analysis.options, (option) => matches2(option) && isDouble(option));
     return double ?? (doublesOnly ? null : bestOption(analysis.options, matches2));
   }
   var hasAutoRule = ({ rules, minGain }) => rules.size > 0 || minGain != null;
-  function autoAcceptCandidates(analyses, settings) {
+  function autoAcceptCandidates(analyses, settings, fair = null, refused = () => false) {
     if (!hasAutoRule(settings)) return [];
     return analyses.flatMap((analysis) => {
-      const option = autoAcceptOption(analysis, settings);
+      const option = autoAcceptOption(analysis, settings, fair, (cardId) => refused(analysis.offer.id, cardId));
       return option ? [{ analysis, option }] : [];
     }).sort(byDealPriority);
   }
@@ -4959,7 +4963,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.22";
+  var SURVEY_VERSION = "2.35.23";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5152,6 +5156,9 @@ Continuer ?`);
   });
   function createAutoAccept(store, { take, currentAnalyses }) {
     const tried = /* @__PURE__ */ new Set();
+    // cards the site refused for an offer (fair-play limit): the offer is retried once with its next passing card
+    const refusedCards = /* @__PURE__ */ new Set();
+    const refused = (offerId, cardId) => refusedCards.has(`${offerId}:${cardId}`);
     const acceptedAt = [];
     let running = false;
     const auto = () => store.get().auto;
@@ -5163,7 +5170,7 @@ Continuer ?`);
         await sleep(acceptedAt[0] + MINUTE_MS - Date.now());
       }
     }
-    const nextCandidate = () => autoAcceptCandidates(currentAnalyses(), autoSettings(auto())).find((deal) => !tried.has(deal.analysis.offer.id));
+    const nextCandidate = () => autoAcceptCandidates(currentAnalyses(), autoSettings(auto()), store.get().fair ?? null, refused).find((deal) => !tried.has(deal.analysis.offer.id));
     function stop(reason) {
       patch({ enabled: false, stopReason: reason });
       toast(`Auto-accept arrêté : ${reason}`, "error");
@@ -5172,12 +5179,27 @@ Continuer ?`);
       if (!auto().giftLimited) toast(`Auto-accept : offre ignorée. ${describeError(error)}`, "error");
       patch({ giftLimited: auto().giftLimited + 1 });
     }
-    async function acceptDeal({ analysis, option }) {
+    // The site refused this card (its counters can differ from what the script read): the next passing card of the
+    // same offer is tried once; after a second refusal, or when no other card passes, the offer is left alone.
+    function giftLimited({ analysis, option }, error) {
+      const offerId = analysis.offer.id;
+      const alreadyRetried = [...refusedCards].some((key) => key.startsWith(`${offerId}:`));
+      refusedCards.add(`${offerId}:${option.card.id}`);
+      const next = alreadyRetried ? null : autoAcceptOption(analysis, autoSettings(auto()), store.get().fair ?? null, (cardId) => refused(offerId, cardId));
+      if (next) {
+        tried.delete(offerId);
+        return;
+      }
+      tried.add(offerId);
+      skipGiftLimited(error);
+    }
+    async function acceptDeal(deal) {
+      const { analysis, option } = deal;
       tried.add(analysis.offer.id);
       try {
         await take(analysis, option);
       } catch (error) {
-        if (isGiftLimit(error)) skipGiftLimited(error);
+        if (isGiftLimit(error)) giftLimited(deal, error);
         else if (!isGone(error)) stop(describeError(error));
         return;
       }
