@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.19
+- Commande console `kyaraPlusDiag.probe()` : demande au site, en lecture seule, les offres du tableau avec quelques
+  paramètres de pagination et enregistre les réponses, pour savoir si les offres plus anciennes que les 30 dernières
+  sont accessibles.
+
 ## 2.35.18
 - Relevé `kyaraPlusSeries.download()` : fonctionne aussi sur la page Marché et y enregistre les réponses dont Mon activité
   est construit (historique, offres du tableau, échanges directs, marché), pour comprendre la limite des offres du

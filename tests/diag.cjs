@@ -13,7 +13,8 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/TUNNEL/.test(m.text())) errors.push(m.text()); });
+  // the probe asks the fake API for paths it does not serve (404): expected, not an error of the script
+  page.on('console', (m) => { if (m.type() === 'error' && !/TUNNEL|404 \(Not Found\)/.test(m.text())) errors.push(m.text()); });
   await page.route('https://kyara.games/**', async (route) => {
     const url = new URL(route.request().url()); const p = url.pathname;
     const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', headers: { 'x-kyara-rush': '1' }, body: JSON.stringify(body) });
@@ -61,6 +62,8 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.dialogResult = dialogResult;
   out.dialogHtml = JSON.parse(require('fs').readFileSync(await dialogFile.path(), 'utf8')).html;
   await page.evaluate(() => document.querySelector('[role="dialog"]').remove());
+  const [probeFile, probeResult] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => kyaraPlusDiag.probe())]);
+  out.probe = { name: probeFile.suggestedFilename(), results: JSON.parse(require('fs').readFileSync(await probeFile.path(), 'utf8')).results.length, text: probeResult.slice(0, 60) };
   out.offUnknown = await page.evaluate(() => kyaraPlusDiag.off('nimportequoi').slice(0, 40));
   out.off = await page.evaluate(() => kyaraPlusDiag.off('market-offers'));
   await page.waitForTimeout(100);
@@ -80,6 +83,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.boardBack = await page.evaluate(() => Boolean(document.querySelector('.kp-board')));
   out.errors = errors;
   const ok = out.lines.some((l) => /^click button\.kp-chip/.test(l)) && /<email>/.test(out.mask ?? '') && /^kyara-diag-.*\.json$/.test(out.downloadName)
+    && /^kyara-probe-.*\.json$/.test(out.probe.name) && out.probe.results === 10
     && /aucune fenêtre/.test(out.dialogNone) && /^kyara-dialog-.*\.json$/.test(out.dialogName) && /<email>/.test(out.dialogHtml) && !/joueur@/.test(out.dialogHtml) && /role="dialog"/.test(out.dialogHtml)
     && out.oldFormatDropped && out.boardGone && out.stored.ids.join() === 'market-offers' && out.stored.version === out.version && out.boardStillGoneAfterReload
     && /désactivées par kyaraPlusDiag\.off : market-offers\./.test(out.toastAfterReload) && out.boardBackAfterUpdate && out.storedAfterUpdate === null && out.boardBack && errors.length === 0;

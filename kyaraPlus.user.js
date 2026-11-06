@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.18
+// @version      2.35.19
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4865,7 +4865,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.18";
+  var SURVEY_VERSION = "2.35.19";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -8997,6 +8997,8 @@ button.kp-act__stat:hover,\r
   //                                      then kyaraPlusDiag.download() saves the recording (e-mails masked)
   //   kyaraPlusDiag.dialog()           → saves the open dialog of the site (HTML, e-mails masked) with the fair-play
   //                                      answer for the profile shown, to build features on the trade proposal window
+  //   kyaraPlusDiag.probe()            → asks /trades/offers/mine with a few paging parameters (read-only) and saves
+  //                                      what comes back, to learn whether older board offers can be fetched
   var DISABLED_SETTING = "disabledFeatures";
   // The switches serve one investigation: they are kept across reloads but dropped by the next version of the script,
   // so a feature switched off while looking into a problem never stays off once the fix is installed.
@@ -9099,6 +9101,39 @@ button.kp-act__stat:hover,\r
       const data = { version: SURVEY_VERSION, page: location.pathname, partnerId, fairPlay, html };
       return `fichier ${saveJson("kyara-dialog", data)} téléchargé (${formatNumber(html.length)} caractères)`;
     }
+    // /trades/offers/mine answers the last 30 accepted offers with no page marker (relevé du 06/11/2026). This asks the
+    // site, read-only, whether a page, size, offset or "before" parameter gives older ones, and saves the answers.
+    async function probe() {
+      const base = await tradesApi.offersMine();
+      const baseIds = new Set(base.map((offer) => offer.id));
+      const oldest = base.reduce((min, offer) => offer.closedAt && (!min || offer.closedAt < min) ? offer.closedAt : min, null);
+      const oldestId = base.find((offer) => offer.closedAt === oldest)?.id ?? null;
+      const variants = ["?page=2", "?page=1&size=100", "?limit=100", "?offset=30", "?skip=30", `?before=${encodeURIComponent(oldest ?? "")}`, `?cursor=${encodeURIComponent(oldestId ?? "")}`, "?all=1", "?status=accepted&page=2", "/history"];
+      const results = [];
+      for (const variant of variants) {
+        const path = variant.startsWith("/") ? `/trades/offers/mine${variant}` : `/trades/offers/mine${variant}`;
+        let body;
+        let error = null;
+        try {
+          body = await request(path);
+        } catch (caught) {
+          error = { status: caught.status ?? null, code: caught.code ?? null, message: caught.message ?? null };
+        }
+        const list = Array.isArray(body) ? body : Array.isArray(body?.items) ? body.items : Array.isArray(body?.offers) ? body.offers : null;
+        const ids = list ? list.map((offer) => offer?.id).filter(Boolean) : [];
+        results.push({
+          path,
+          error,
+          shape: body == null ? null : Array.isArray(body) ? `liste de ${body.length}` : Object.fromEntries(Object.entries(body).map(([key, value]) => [key, Array.isArray(value) ? `liste de ${value.length}` : typeof value === "object" && value ? "objet" : value])),
+          count: ids.length,
+          newIds: ids.filter((id) => !baseIds.has(id)).length,
+          sameAsBase: ids.length === baseIds.size && ids.every((id) => baseIds.has(id)),
+          closedAtRange: list?.length ? [list.map((offer) => offer.closedAt).sort()[0], list.map((offer) => offer.closedAt).sort().at(-1)] : null
+        });
+      }
+      const data = { version: SURVEY_VERSION, base: { count: base.length, oldestClosedAt: oldest }, results };
+      return `fichier ${saveJson("kyara-probe", data)} téléchargé : ${results.map((result) => `${result.path.replace("/trades/offers/mine", "")} → ${result.error ? `erreur ${result.error.status}` : `${result.count} offres, ${result.newIds} nouvelles`}`).join(" ; ")}`;
+    }
     const matching = (prefix) => features.filter((feature) => feature.id === prefix || feature.id.startsWith(`${prefix}-`)).map((feature) => feature.id);
     function setDisabled(prefix, disabled) {
       const ids = matching(prefix);
@@ -9113,6 +9148,7 @@ button.kp-act__stat:hover,\r
       stop,
       download,
       dialog,
+      probe,
       last: null,
       off: (prefix) => setDisabled(prefix, true),
       on: (prefix) => setDisabled(prefix, false),
