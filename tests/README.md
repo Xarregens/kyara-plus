@@ -18,6 +18,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `verdict.cjs` | Proposer un échange | Bloc Fair-play sous la bande du site : phrase de verdict, « Détails » mémorisé, barres du joueur concerné et limite entre les deux ; mise à jour quand les totaux changent ; retrait à la fermeture. |
 | `widths.cjs` | Panneau de droite | Tuiles de même largeur, aucun bouton tronqué. |
 | `sublatency.cjs` | Mon activité (Échanges) | Délai clic → affichage des sous-catégories, pendant et après le chargement. Args : latence ms, pages. |
+| `boardmemory.cjs` | Mon activité (Tableau) | Offres du tableau mémorisées entre deux visites quand le site ne les renvoie plus ; offres ouvertes non mémorisées ; « Voir plus ». |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |
 | `loadtime_run.cjs` | Mon activité | Temps jusqu'au premier affichage et aux premières lignes, chronologie des requêtes. |
 | `tree.cjs` | Mon activité | Onglets centrés, cadre des sous-catégories et sa pointe. |

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.19
+// @version      2.35.20
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -353,7 +353,9 @@
   var tradesApi = {
     mine: () => request("/me/trades"),
     // Board offers you posted or took, with closedAt, taker and takenWith once accepted.
-    offersMine: () => request("/trades/offers/mine"),
+    // the site answers the last 30 accepted offers only (sondage du 06/11/2026 : no paging parameter changes that);
+    // every answer is remembered so Mon activité can show older ones (see board-memory)
+    offersMine: () => request("/trades/offers/mine").then(rememberBoardOffers),
     cancelOffer: (offerId) => request(`/trades/offers/${encodeURIComponent(offerId)}/cancel`, { method: "POST" }),
     propose: (body) => request("/trades", { method: "POST", body, withPass: true }),
     // Only accept is pass-protected on the site; decline and cancel are plain POSTs without a body.
@@ -2068,6 +2070,46 @@ Continuer ?`);
     bootstrapListeners.add(listener);
     if (lastBootstrap) listener(lastBootstrap);
     return () => bootstrapListeners.delete(listener);
+  }
+
+  // src/data/board-memory.js
+  // Board offers seen in /trades/offers/mine (the last 30 accepted), kept for a while: the site has no way to page
+  // further back, so the memory is the only source for older ones. Only closed offers are kept: an open one still
+  // comes from the site, and would otherwise linger here after being taken or cancelled.
+  var BOARD_MEMORY_KEY = "kyara-plus:board-offers";
+  config_default.boardMemory = { keepMs: 14 * 24 * 36e5, max: 2e3 };
+  var boardOfferTime = (offer) => Date.parse(offer.closedAt ?? offer.createdAt ?? "") || 0;
+  function readBoardMemory() {
+    try {
+      const list = JSON.parse(localStorage.getItem(BOARD_MEMORY_KEY));
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  }
+  function rememberBoardOffers(offers) {
+    if (!Array.isArray(offers)) return offers;
+    const now = Date.now();
+    const byId = new Map(readBoardMemory().filter((offer) => now - boardOfferTime(offer) < config_default.boardMemory.keepMs).map((offer) => [offer.id, offer]));
+    let changed = false;
+    for (const offer of offers) {
+      if (!offer?.id || offer.status === "open" || byId.has(offer.id)) continue;
+      byId.set(offer.id, offer);
+      changed = true;
+    }
+    if (changed || byId.size !== readBoardMemory().length) {
+      const list = [...byId.values()].sort((a, b) => boardOfferTime(b) - boardOfferTime(a)).slice(0, config_default.boardMemory.max);
+      try {
+        localStorage.setItem(BOARD_MEMORY_KEY, JSON.stringify(list));
+      } catch {
+      }
+    }
+    return offers;
+  }
+  // the site's answer first, then the remembered offers it no longer returns
+  function withRememberedBoardOffers(offers) {
+    const ids = new Set(offers.map((offer) => offer.id));
+    return [...offers, ...readBoardMemory().filter((offer) => !ids.has(offer.id))];
   }
 
   // src/data/trade-ledger.js
@@ -3879,12 +3921,12 @@ Continuer ?`);
     error: (message) => toast(message, "error")
   };
   var offersWarned = false;
-  var boardOffers = () => tradesApi.offersMine().catch((error) => {
+  var boardOffers = () => tradesApi.offersMine().then(withRememberedBoardOffers).catch((error) => {
     if (!offersWarned) {
       offersWarned = true;
       notify2.error(`Offres du tableau indisponibles : ${describeError(error)}`);
     }
-    return [];
+    return withRememberedBoardOffers([]);
   });
   // context() and live() both need /me/bootstrap: when they run at the same time, one request serves both
   var bootstrapInFlight = null;
@@ -4865,7 +4907,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.19";
+  var SURVEY_VERSION = "2.35.20";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

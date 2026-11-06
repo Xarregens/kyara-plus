@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.20
+- Mon activité, Échanges → Tableau : le site ne renvoie que les 30 dernières offres acceptées, sans suite possible
+  (sondage du 06/11/2026 : dix façons de demander la suite renvoient les mêmes 30). Le script mémorise désormais chaque
+  offre du tableau qu'il voit passer (14 jours, 2 000 au plus) et les ajoute sous les 30 du site ; « Voir plus » les
+  déroule. Seules les offres vues pendant que le site était ouvert avec le script sont connues.
+
 ## 2.35.19
 - Commande console `kyaraPlusDiag.probe()` : demande au site, en lecture seule, les offres du tableau avec quelques
   paramètres de pagination et enregistre les réponses, pour savoir si les offres plus anciennes que les 30 dernières
