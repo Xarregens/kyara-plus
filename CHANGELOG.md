@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.26
+- Mon activité, échanges directs : la discussion est dans la ligne, sans quitter la vue Kyara Plus. « Discuter (N) »
+  déplie les messages (ceux du site, lus à `/trades/<id>/messages`, plus le message de la proposition), une case pour
+  écrire et « Envoyer » (Entrée aussi). Les messages se rafraîchissent avec la page, toutes les minutes.
+
 ## 2.35.25
 - Relevé `kyaraPlusSeries.download()` sur la page Marché : enregistre aussi tous les appels d'échanges directs du site
   (lecture et envoi de messages), avec la méthode et le contenu envoyé, pour construire la discussion dans la vue

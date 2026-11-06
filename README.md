@@ -52,6 +52,7 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
 - Historique chargé par sous-catégorie, à l'ouverture, 30 derniers jours d'abord (« Charger tout l'historique » pour le reste),
   pages lues en parallèle ; ouverture de la page deux fois plus rapide ; lignes réutilisées entre deux rendus.
 - Chakra bloqué affiché dans l'en-tête du site, à côté du solde (badge « +N »).
+- Discussion d'un échange direct dans la ligne (« Discuter (N) ») : messages du site et envoi, sans changer de vue.
 - Tableau : le site ne donne que les 30 dernières offres acceptées ; le script mémorise celles qu'il voit passer (14 jours)
   et les garde visibles sous les 30 du site.
 

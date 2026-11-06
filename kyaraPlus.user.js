@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.25
+// @version      2.35.26
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -360,6 +360,9 @@
     propose: (body) => request("/trades", { method: "POST", body, withPass: true }),
     // Only accept is pass-protected on the site; decline and cancel are plain POSTs without a body.
     act: (tradeId, action) => request(`/trades/${encodeURIComponent(tradeId)}/${action}`, { method: "POST", withPass: action === "accept" }),
+    // Discussion of a direct trade (relevé du 06/11/2026) : GET → [{ id, senderId, text, createdAt }], POST { text } → the message
+    messages: (tradeId) => request(`/trades/${encodeURIComponent(tradeId)}/messages`),
+    sendMessage: (tradeId, text) => request(`/trades/${encodeURIComponent(tradeId)}/messages`, { method: "POST", body: { text } }),
     custom: ({ method, path, body }) => request(path, { method, body, withPass: method !== "GET" }),
     availableFrom: (userId2) => request(`/trades/available/${encodeURIComponent(userId2)}`),
     ownedBy: (userId2) => request(`/trades/owned/${encodeURIComponent(userId2)}`),
@@ -423,11 +426,12 @@
   // it (the size of a row that is off screen, with content-visibility), which replaceChildren would throw away.
   function syncChildren(parent, ...children) {
     const wanted = children.flat().filter((child) => child != null && child !== false);
+    const keep = new Set(wanted);
+    for (const child of [...parent.childNodes]) if (!keep.has(child)) child.remove();
     wanted.forEach((child, index) => {
       const current = parent.childNodes[index] ?? null;
       if (current !== child) parent.insertBefore(child, current);
     });
-    while (parent.childNodes.length > wanted.length) parent.lastChild.remove();
   }
   function keepAttached(node, anchorSelector, place) {
     let anchor = null;
@@ -2483,7 +2487,7 @@ Continuer ?`);
         give: sideOf(incoming ? trade.want : trade.give),
         receive: sideOf(incoming ? trade.give : trade.want),
         message: trade.message,
-        messages: trade.messages ?? 0,
+        messages: typeof trade.messages === "number" ? trade.messages : Array.isArray(trade.messages) ? trade.messages.length : 0,
         trade
       },
       ctx
@@ -2693,6 +2697,8 @@ Continuer ?`);
     version: 0,
     focus: null,
     withdrawArmed: false,
+    // discussions open in the rows: key → { open, messages, loading, error, sending }
+    talks: {},
     view: {
       category: Category.TRADES,
       sub: Category.TRADES_IN,
@@ -2787,7 +2793,43 @@ Continuer ?`);
       setLive(await api3.live());
       loadPrices2(republish({ coalesce: false }));
       syncLedger();
+      for (const [key, talk] of Object.entries(state().talks)) if (talk.open) loadTalk(key, talk.tradeId);
     }
+    // Discussion of a trade, in the row (the site's own box lives in its view only)
+    const talkDrafts = /* @__PURE__ */ new Map();
+    const patchTalk = (key, changes) => patch({ talks: { ...state().talks, [key]: { ...state().talks[key], ...changes } } });
+    async function loadTalk(key, tradeId) {
+      patchTalk(key, { loading: true });
+      try {
+        const messages = await api3.messages(tradeId);
+        patchTalk(key, { messages: Array.isArray(messages) ? messages : [], loading: false, error: null });
+      } catch (error) {
+        patchTalk(key, { loading: false, error: describeError(error) });
+      }
+    }
+    const talk = {
+      toggle(item) {
+        const current = state().talks[item.key];
+        const open = !current?.open;
+        patchTalk(item.key, { open, tradeId: item.trade.id, messages: current?.messages ?? null, loading: false, error: null, sending: false });
+        if (open) loadTalk(item.key, item.trade.id);
+      },
+      draft: (item, text) => talkDrafts.set(item.key, text),
+      draftOf: (item) => talkDrafts.get(item.key) ?? "",
+      async send(item) {
+        const text = (talkDrafts.get(item.key) ?? "").trim();
+        if (!text || state().talks[item.key]?.sending) return;
+        patchTalk(item.key, { sending: true, error: null });
+        try {
+          const sent = await api3.sendMessage(item.trade.id, text);
+          talkDrafts.delete(item.key);
+          const messages = [...state().talks[item.key]?.messages ?? [], sent ?? { id: `local:${Date.now()}`, senderId: ctx?.myId, text, createdAt: new Date().toISOString() }];
+          patchTalk(item.key, { sending: false, messages });
+        } catch (error) {
+          patchTalk(item.key, { sending: false, error: describeError(error) });
+        }
+      }
+    };
     async function load() {
       patch({ phase: "loading", error: null });
       try {
@@ -3042,6 +3084,8 @@ Continuer ?`);
       focusTrade,
       withdrawAll,
       actions: actions2,
+      talk,
+      myId: () => ctx?.myId ?? null,
       cardOf: (id) => ctx ? cardOf(id) : void 0,
       ownedOf: (id) => collection.get(id)?.qty ?? 0,
       dispose: () => {
@@ -3269,11 +3313,33 @@ Continuer ?`);
       ];
     }
     const message = item.message ? ["Message", `« ${item.message} »`] : null;
-    const talk = item.trade ? ["Discussion", link(talkHref(item), `Ouvrir dans la vue du site (${plural(item.messages, "message")})`)] : null;
-    return [message, talk];
+    return [message];
   }
-  // The discussion of a trade is the site's own (message box under the trade): the link opens the site's view on it
-  var talkHref = (item) => `/marche?onglet=echanges&echange=${item.trade.id}&discussion=1`;
+  // "Discuter (N)": opens the discussion of the trade in the row
+  function talkButton(item, view) {
+    const talk = view.state.talks[item.key];
+    const count = talk?.messages ? talk.messages.length : item.messages;
+    return h("button", { class: `kp-btn kp-btn--sm kp-btn--ghost kp-act__talk-btn${talk?.open ? " is-on" : ""}`, type: "button", "aria-pressed": String(Boolean(talk?.open)), title: "Discuter avec l’autre joueur à propos de cet échange", onClick: () => view.controller.talk.toggle(item) }, `Discuter${count ? ` (${count})` : ""}`);
+  }
+  var talkTimeFormat = new Intl.DateTimeFormat("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  function talkBox(item, view) {
+    const { controller } = view;
+    const talk = view.state.talks[item.key];
+    const myId = controller.myId();
+    const partner = item.who?.pseudo ?? "lui";
+    const bubble = (mine, text, at) => h("div", { class: `kp-talk__msg${mine ? " kp-talk__msg--me" : ""}` }, h("span", { class: "kp-talk__who" }, mine ? "Toi" : partner), h("span", { class: "kp-talk__text" }, text), at ? h("span", { class: "kp-talk__time" }, talkTimeFormat.format(new Date(at))) : null);
+    const proposal = item.message ? bubble(item.kind === "tradeOut", item.message, item.createdAt) : null;
+    const messages = (talk?.messages ?? []).map((message) => bubble(message.senderId === myId, message.text ?? "", message.createdAt));
+    const status = talk?.error ? h("p", { class: "kp-talk__status kp-talk__status--error" }, talk.error) : talk?.loading && !talk.messages ? h("p", { class: "kp-talk__status" }, "Chargement…") : !proposal && !messages.length && talk?.messages ? h("p", { class: "kp-talk__status" }, `Pas encore de message. Négocie ici avec ${partner}.`) : null;
+    const input = h("input", { class: "kp-input kp-talk__input", type: "text", maxlength: "500", placeholder: `Écris à ${partner}…`, value: controller.talk.draftOf(item), "aria-label": `Message à ${partner}`, onInput: (event) => controller.talk.draft(item, event.target.value), onKeydown: (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        controller.talk.send(item);
+      }
+    } });
+    const send = h("button", { class: "kp-btn kp-btn--sm", type: "button", disabled: Boolean(talk?.sending), onClick: () => controller.talk.send(item) }, talk?.sending ? "Envoi…" : "Envoyer");
+    return h("div", { class: "kp-talk" }, h("div", { class: "kp-talk__list" }, proposal, messages), status, h("div", { class: "kp-talk__form" }, input, send));
+  }
   function hasOverflow(item) {
     const limit = config_default.activity.compactThumbLimit;
     return [item.give.cards, item.receive.cards, item.choice ?? []].some((list) => list.length > limit);
@@ -3314,9 +3380,9 @@ Continuer ?`);
     const open = (label, href) => h("a", { class: "kp-btn kp-btn--sm kp-btn--ghost", href }, label);
     switch (item.kind) {
       case "tradeIn":
-        return item.state === State.TODO ? [button("Accepter", actions2.accept, { ghost: false }), button("Refuser", actions2.decline), open("Discuter", talkHref(item))] : [];
+        return [...item.state === State.TODO ? [button("Accepter", actions2.accept, { ghost: false }), button("Refuser", actions2.decline)] : [], talkButton(item, view)];
       case "tradeOut":
-        return item.state === State.LIVE ? [button("Annuler", actions2.cancelTrade), open("Discuter", talkHref(item))] : [];
+        return [...item.state === State.LIVE ? [button("Annuler", actions2.cancelTrade)] : [], talkButton(item, view)];
       case "counter":
         return item.state === State.LIVE ? [button("Retirer", actions2.cancelOffer)] : [];
       case "order":
@@ -3493,7 +3559,8 @@ Continuer ?`);
       "li",
       { class: classes.join(" "), id: `kp-act-${item.key}`, "data-kind": item.kind },
       BODIES[variant](item, view, open),
-      open && hasDetail(item, view) ? detail(item, view) : null
+      open && hasDetail(item, view) ? detail(item, view) : null,
+      item.trade && state.talks[item.key]?.open ? talkBox(item, view) : null
     );
   }
 
@@ -3646,7 +3713,9 @@ Continuer ?`);
       // the prices and owned copies of this row's cards, rather than the global version counter: a price refresh that
       // changed nothing for this row keeps its node
       const cards = cardIds([item]).map((id) => `${view.priceOf(id) ?? "?"}:${view.ownedOf(id)}`).join(",");
-      return `${state.view.open.has(item.key) ? 1 : 0}${focused ? 1 : 0}${state.busy.has(item.key) ? 1 : 0}|${cards}|${view.showKind ? 1 : 0}|${clock}`;
+      const talk = state.talks[item.key];
+      const talkSig = talk ? `${talk.open ? 1 : 0}:${talk.messages?.length ?? "-"}:${talk.loading ? 1 : 0}:${talk.sending ? 1 : 0}:${talk.error ?? ""}` : "";
+      return `${state.view.open.has(item.key) ? 1 : 0}${focused ? 1 : 0}${state.busy.has(item.key) ? 1 : 0}|${cards}|${view.showKind ? 1 : 0}|${clock}|${talkSig}`;
     };
     // Every refresh rebuilds the item objects from fresh data; an item whose content did not change keeps its row
     // (and the size the browser remembers for it: a rebuilt row off screen falls back to a placeholder height, and
@@ -4004,6 +4073,8 @@ Continuer ?`);
     history: (kind, page, size, options) => marketApi.history(kind, page, size, options),
     prices: (ids) => loadPrices(ids),
     tradeAction: (tradeId, action) => tradesApi.act(tradeId, action),
+    messages: (tradeId) => tradesApi.messages(tradeId),
+    sendMessage: (tradeId, text) => tradesApi.sendMessage(tradeId, text),
     cancelOffer: (offerId) => tradesApi.cancelOffer(offerId),
     cancelListing: (listingId) => marketApi.cancelListing(listingId),
     cancelOrder: (orderId) => marketApi.cancelOrder(orderId),
@@ -4968,7 +5039,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.25";
+  var SURVEY_VERSION = "2.35.26";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9467,6 +9538,18 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-legend__item { display: inline-flex; align-items: center; gap: 4px; color: var(--kp-cost-color); font-weight: 600; }
 .kp-fair__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
+.kp-act__talk-btn.is-on { border-color: var(--acc); color: var(--acc); }
+.kp-talk { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-3); border-top: 1px solid var(--line); }
+.kp-talk__list { display: flex; flex-direction: column; gap: 4px; max-height: 220px; overflow-y: auto; }
+.kp-talk__msg { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; max-width: 85%; padding: 4px 10px; border-radius: var(--r-md); background: var(--panel2); font-size: var(--t-sm); }
+.kp-talk__msg--me { align-self: flex-end; background: color-mix(in srgb, var(--acc) 16%, var(--panel2)); }
+.kp-talk__who { color: var(--fg2); font-size: 11px; font-weight: 700; }
+.kp-talk__text { white-space: pre-wrap; word-break: break-word; }
+.kp-talk__time { margin-left: auto; color: var(--mut); font-family: var(--mono); font-size: 10px; }
+.kp-talk__status { margin: 0; color: var(--mut); font-size: var(--t-meta); }
+.kp-talk__status--error { color: var(--danger); }
+.kp-talk__form { display: flex; gap: var(--s-2); }
+.kp-talk__input { flex: 1; min-width: 0; }
 .kp-verdict { display: flex; flex-direction: column; gap: 6px; margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); font-size: 13px; }
 .kp-verdict__head { display: flex; align-items: center; gap: var(--s-2); color: var(--fg); }
 .kp-verdict__status { flex: none; font-weight: 800; }

@@ -20,7 +20,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `sublatency.cjs` | Mon activité (Échanges) | Délai clic → affichage des sous-catégories, pendant et après le chargement. Args : latence ms, pages. |
 | `scrollkeep.cjs` | Mon activité (Tableau, 210 lignes) | Position de défilement et ligne du haut inchangées après le rafraîchissement d'une minute (lignes réutilisées, pas de remontée de page). Dure 70 s. |
 | `boardmemory.cjs` | Mon activité (Tableau) | Offres du tableau mémorisées entre deux visites quand le site ne les renvoie plus ; offres ouvertes non mémorisées ; « Voir plus ». |
-| `discuss.cjs` | Mon activité (Échanges) | Bouton « Discuter » sur les échanges à traiter et envoyés ; bascule vers la vue du site quand l'adresse demande la discussion (navigation interne ou chargement). |
+| `discuss.cjs` | Mon activité (Échanges) | Discussion dans la ligne : « Discuter (N) », messages lus, envoi (Entrée), compteur mis à jour, fermeture. |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |
 | `loadtime_run.cjs` | Mon activité | Temps jusqu'au premier affichage et aux premières lignes, chronologie des requêtes. |
 | `tree.cjs` | Mon activité | Onglets centrés, cadre des sous-catégories et sa pointe. |

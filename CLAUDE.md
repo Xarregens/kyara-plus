@@ -46,6 +46,8 @@ prouvent pas la forme exacte des vraies réponses, qui vient des relevés (comma
 - `/api/trades/offers/mine` : les 30 dernières offres acceptées seulement, triées par `closedAt` décroissant ; aucun
   paramètre de pagination n'a d'effet (sondage `kyaraPlusDiag.probe()` du 06/11/2026) et `/me/market/history?kind=echanges`
   (50 par page) ne contient que les échanges directs, jamais d'offres. D'où la mémoire `kyara-plus:board-offers`.
+- Discussion d'un échange direct : `GET /api/trades/<id>/messages` → `[{ id, senderId, text, createdAt }]`,
+  `POST` même adresse `{ text }` → 201 avec le message (relevé du 06/11/2026). `trade.messages` = nombre de messages.
 - File d'attente des requêtes : rafale de 4 puis une toutes les 250 ms × `x-kyara-rush` ; limite générale du site
   300/min, limite marché 20/min pour les acceptations.
 
