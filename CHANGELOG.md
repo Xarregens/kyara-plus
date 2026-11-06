@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.22
+- Mon activité : la page ne remonte plus toute seule quand on a fait défiler une longue liste (Tableau avec les offres
+  mémorisées, par exemple). À chaque rafraîchissement, toutes les lignes étaient reconstruites et replacées, et le
+  navigateur oubliait la hauteur de celles hors écran : la page raccourcissait d'un coup. Les lignes inchangées sont
+  maintenant gardées telles quelles (plus rapide aussi), et la ligne visible en haut reste à sa place.
+
 ## 2.35.21
 - Auto-accept : case « Seulement les cartes qu'il me manque » : une offre dont la carte reçue est déjà dans ma
   collection n'est jamais acceptée. Mémorisée, figée pendant la marche comme les autres règles.

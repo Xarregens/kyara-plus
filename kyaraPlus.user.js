@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.21
+// @version      2.35.22
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -418,6 +418,16 @@
   }
   function fill(parent, ...children) {
     parent.replaceChildren(...children.flat().filter((child) => child != null && child !== false));
+  }
+  // Same result as fill, but a child already at its place is left untouched: the browser keeps what it knows about
+  // it (the size of a row that is off screen, with content-visibility), which replaceChildren would throw away.
+  function syncChildren(parent, ...children) {
+    const wanted = children.flat().filter((child) => child != null && child !== false);
+    wanted.forEach((child, index) => {
+      const current = parent.childNodes[index] ?? null;
+      if (current !== child) parent.insertBefore(child, current);
+    });
+    while (parent.childNodes.length > wanted.length) parent.lastChild.remove();
   }
   function keepAttached(node, anchorSelector, place) {
     let anchor = null;
@@ -3624,22 +3634,43 @@ Continuer ?`);
     // already built (images decoded, no layout from scratch) and only builds the missing ones. A row is rebuilt when what it
     // shows changed: open / focused / busy state, prices (state.version), kind label, or the minute (relative times).
     const rowCache = /* @__PURE__ */ new Map();
+    const groupNodes = /* @__PURE__ */ new Map();
     let renderTick = 0;
+    // A finished row only shows its date ("aujourd'hui" or the day): it depends on the day, not the minute; a live row
+    // shows "expire dans…", which moves every minute.
     const rowSignature = (item, view) => {
       const { state } = view;
       const focused = state.focus?.key === item.key && view.now < state.focus.until;
-      return `${state.view.open.has(item.key) ? 1 : 0}${focused ? 1 : 0}${state.busy.has(item.key) ? 1 : 0}|${state.version}|${view.showKind ? 1 : 0}|${Math.floor(view.now / 6e4)}`;
+      const clock = item.state === State.DONE ? new Date(view.now).toDateString() : Math.floor(view.now / 6e4);
+      // the prices and owned copies of this row's cards, rather than the global version counter: a price refresh that
+      // changed nothing for this row keeps its node
+      const cards = cardIds([item]).map((id) => `${view.priceOf(id) ?? "?"}:${view.ownedOf(id)}`).join(",");
+      return `${state.view.open.has(item.key) ? 1 : 0}${focused ? 1 : 0}${state.busy.has(item.key) ? 1 : 0}|${cards}|${view.showKind ? 1 : 0}|${clock}`;
+    };
+    // Every refresh rebuilds the item objects from fresh data; an item whose content did not change keeps its row
+    // (and the size the browser remembers for it: a rebuilt row off screen falls back to a placeholder height, and
+    // hundreds of them above the viewport would drag the page upward).
+    const itemSignature = (item) => {
+      try {
+        return JSON.stringify(item);
+      } catch {
+        return null;
+      }
     };
     function rowFor(item, view) {
       const signature = rowSignature(item, view);
       const key = `${item.key}|${view.showKind ? 1 : 0}`;
       const cached = rowCache.get(key);
-      if (cached && cached.item === item && cached.signature === signature) {
-        cached.tick = renderTick;
-        return cached.node;
+      if (cached && cached.signature === signature) {
+        const sameItem = cached.item === item || (cached.itemSignature ??= itemSignature(cached.item)) != null && cached.itemSignature === itemSignature(item);
+        if (sameItem) {
+          cached.item = item;
+          cached.tick = renderTick;
+          return cached.node;
+        }
       }
       const node = activityRow(item, view);
-      rowCache.set(key, { item, signature, node, tick: renderTick });
+      rowCache.set(key, { item, signature, node, tick: renderTick, itemSignature: null });
       return node;
     }
     function pruneRowCache() {
@@ -3847,26 +3878,25 @@ Continuer ?`);
       const { shown, total } = visibleGroups(state);
       const shownCount = shown.reduce((sum, group) => sum + group.slice.length, 0);
       const empty = !shown.length && state.history.phase === HistoryPhase.DONE;
-      fill(
+      const anchor = scrollAnchor();
+      // the group sections and lists are kept between renders too, so an unchanged row is never moved
+      syncChildren(
         body,
         empty ? h("p", { class: "kp-empty" }, state.view.query ? "Rien ne correspond à cette recherche." : "Rien ici.") : null,
-        shown.map(
-          (group) => h(
-            "section",
-            { class: "kp-act__group" },
-            h(
-              "h3",
-              { class: "kp-act__group-title" },
-              GROUP_TITLES[group.id],
-              h("span", { class: "mono" }, String(group.items.length))
-            ),
-            h(
-              "ul",
-              { class: `kp-act__list kp-act__list--${LAYOUTS[state.view.sub] ?? "rows"}` },
-              group.slice.map((item) => rowFor(item, rowView))
-            )
-          )
-        ),
+        shown.map((group) => {
+          const nodes = groupNodes.get(group.id) ?? (() => {
+            const count = h("span", { class: "mono" });
+            const list = h("ul");
+            const section = h("section", { class: "kp-act__group" }, h("h3", { class: "kp-act__group-title" }, GROUP_TITLES[group.id], count), list);
+            const created = { section, count, list };
+            groupNodes.set(group.id, created);
+            return created;
+          })();
+          nodes.count.textContent = String(group.items.length);
+          nodes.list.className = `kp-act__list kp-act__list--${LAYOUTS[state.view.sub] ?? "rows"}`;
+          syncChildren(nodes.list, group.slice.map((item) => rowFor(item, rowView)));
+          return nodes.section;
+        }),
         total > shownCount ? h(
           "button",
           {
@@ -3878,9 +3908,29 @@ Continuer ?`);
         ) : null,
         historyNotice(state)
       );
+      restoreScrollAnchor(anchor);
       pruneRowCache();
       recordPerf(`${state.view.category}/${state.view.sub} (${state.view.sort}${state.view.query ? ", recherche" : ""})`, startedAt, state);
       prebuildSiblings(state);
+    }
+    // The rows are rebuilt on many renders (fresh data every minute, relative times). Rows above the viewport then come
+    // back folded to their placeholder height (content-visibility) and the page would drag upward each time, more with a
+    // long list: the row at the top of the viewport is kept where it was on screen.
+    function scrollAnchor() {
+      if (window.scrollY <= 0) return null;
+      for (const row of body.querySelectorAll(".kp-act__row[id]")) {
+        const rect = row.getBoundingClientRect();
+        if (rect.bottom > 0) return { id: row.id, top: rect.top };
+      }
+      return null;
+    }
+    // Twice: once now, once after the next frame, when the browser has folded the rebuilt rows that are off screen
+    function restoreScrollAnchor(anchor, again = true) {
+      const row = anchor && document.getElementById(anchor.id);
+      if (!row) return;
+      const delta = row.getBoundingClientRect().top - anchor.top;
+      if (Math.abs(delta) >= 1) window.scrollBy(0, delta);
+      if (again) requestAnimationFrame(() => restoreScrollAnchor(anchor, false));
     }
     function scrollToFocus(state) {
       if (!state.focus || state.focus.key === lastFocus) return;
@@ -4909,7 +4959,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.21";
+  var SURVEY_VERSION = "2.35.22";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
