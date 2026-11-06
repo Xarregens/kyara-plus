@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.20
+// @version      2.35.21
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4525,7 +4525,9 @@ Continuer ?`);
   }
 
   var ruleKey = (giveRarity, receiveRarity) => `${giveRarity}>${receiveRarity}`;
-  function autoAcceptOption(analysis, { rules, doublesOnly, minGain, rowMinGain = {} }) {
+  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {} }) {
+    // "only the cards I lack": an offer of a card I already own is never taken on its own
+    if (missingOnly && analysis.owned > 0) return null;
     // a rarity rule also needs the row's minimum gain when one is set (an Epic can be worth more than a Legendary); unknown price = no
     // same rarity (E for E): only with a known gain reaching the row's floor, or at least 0 when the row has none
     const rowGainOk = (option) => {
@@ -4907,7 +4909,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.20";
+  var SURVEY_VERSION = "2.35.21";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5060,6 +5062,7 @@ Continuer ?`);
     enabled: false,
     rules: new Set(readSetting("autoRules", [])),
     doublesOnly: readSetting("autoDoublesOnly", true),
+    missingOnly: readSetting("autoMissingOnly", false),
     gainEnabled: readSetting("autoGainEnabled", false),
     minGain: readSetting("autoMinGain", config_default.autoAccept.defaultMinGain),
     // per given rarity: minimum gain (received price − given price) for the rarity rules of that row; absent = no condition
@@ -5090,9 +5093,10 @@ Continuer ?`);
       byGive: { ...session.byGive, [given]: { count: row.count + 1, gain: row.gain + (known ? entry.gain : 0), unknown: row.unknown + (known ? 0 : 1) } }
     };
   }
-  var autoSettings = ({ rules, doublesOnly, gainEnabled, minGain, rowMinGain = {} }) => ({
+  var autoSettings = ({ rules, doublesOnly, missingOnly = false, gainEnabled, minGain, rowMinGain = {} }) => ({
     rules,
     doublesOnly,
+    missingOnly,
     minGain: gainEnabled ? minGain : null,
     rowMinGain
   });
@@ -5177,6 +5181,12 @@ Continuer ?`);
       patch({ doublesOnly });
       drain();
     }
+    function setMissingOnly(missingOnly) {
+      if (locked()) return;
+      writeSetting("autoMissingOnly", missingOnly);
+      patch({ missingOnly });
+      drain();
+    }
     function setGainRule({ gainEnabled = auto().gainEnabled, minGain = auto().minGain }) {
       if (locked()) return;
       writeSetting("autoGainEnabled", gainEnabled);
@@ -5198,6 +5208,7 @@ Continuer ?`);
       setEnabled,
       toggleRule,
       setDoublesOnly,
+      setMissingOnly,
       setGainRule,
       setRowMinGain,
       stop: () => patch({ enabled: false })
@@ -5507,6 +5518,7 @@ Continuer ?`);
       setAuto: auto.setEnabled,
       toggleAutoRule: auto.toggleRule,
       setAutoDoublesOnly: auto.setDoublesOnly,
+      setAutoMissingOnly: auto.setMissingOnly,
       setAutoRowMinGain: auto.setRowMinGain,
       setAutoGainRule: auto.setGainRule
     };
@@ -5795,7 +5807,7 @@ Continuer ?`);
     if (byGive.length) parts.push(`par rareté : ${byGive.join(" ; ")}`);
     if (auto.gainEnabled) parts.push(`tout échange dont le gain est d’au moins ${formatChakra(auto.minGain)}`);
     if (!parts.length) return "Rien n’est coché : l’auto-accept n’acceptera rien.";
-    return `Acceptera tout seul ${parts.join(", et ")}${auto.doublesOnly ? ", seulement avec mes doublons" : ", même mon dernier exemplaire"}.`;
+    return `Acceptera tout seul ${parts.join(", et ")}${auto.doublesOnly ? ", seulement avec mes doublons" : ", même mon dernier exemplaire"}${auto.missingOnly ? ", seulement les cartes qu’il me manque" : ""}.`;
   }
   function createAutoPanel(controller) {
     const cells = /* @__PURE__ */ new Map();
@@ -5867,10 +5879,12 @@ Continuer ?`);
       }
     });
     const doublesCheck = h("input", { type: "checkbox", class: "kp-check__box" });
+    const missingCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     let enabled = false;
     toggle.addEventListener("click", () => controller.setAuto(!enabled));
     gainCheck.addEventListener("change", () => controller.setAutoGainRule({ gainEnabled: gainCheck.checked }));
     doublesCheck.addEventListener("change", () => controller.setAutoDoublesOnly(doublesCheck.checked));
+    missingCheck.addEventListener("change", () => controller.setAutoMissingOnly(missingCheck.checked));
     const shortcuts = [];
     const shortcut = (label, checked) => {
       const button = h("button", { class: "kp-auto__shortcut", type: "button", onClick: () => setAll(checked) }, label);
@@ -5906,6 +5920,7 @@ Continuer ?`);
         h("span", { class: "kp-muted" }, "chakra")
       ),
       h("label", { class: "kp-check", title: "Ne jamais donner le dernier exemplaire d’une carte. Les cartes verrouillées ne sont jamais données, quoi qu’il arrive." }, doublesCheck, h("span", {}, "Seulement mes doublons")),
+      h("label", { class: "kp-check", title: "N’accepter que les offres dont la carte reçue manque à ma collection : une carte que j’ai déjà, même en un seul exemplaire, n’est jamais prise." }, missingCheck, h("span", {}, "Seulement les cartes qu’il me manque")),
       logTitle,
       log
     );
@@ -5919,6 +5934,7 @@ Continuer ?`);
       toggle.disabled = !enabled && !hasAutoRule(autoSettings(auto));
       toggle.title = toggle.disabled ? "Coche au moins une règle pour pouvoir activer" : enabled ? "Arrêter l’acceptation automatique" : "Lancer l’acceptation automatique";
       doublesCheck.checked = auto.doublesOnly;
+      missingCheck.checked = auto.missingOnly;
       gainCheck.checked = auto.gainEnabled;
       gainInput.disabled = !auto.gainEnabled || enabled;
       if (document.activeElement !== gainInput) gainInput.value = String(auto.minGain);
@@ -5926,6 +5942,7 @@ Continuer ?`);
       root.classList.toggle("kp-auto--locked", enabled);
       rulesBlock.title = enabled ? LOCKED_TITLE : "";
       doublesCheck.disabled = enabled;
+      missingCheck.disabled = enabled;
       gainCheck.disabled = enabled;
       for (const button of shortcuts) button.disabled = enabled;
       for (const [key, button] of cells) {

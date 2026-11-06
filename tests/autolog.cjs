@@ -58,6 +58,9 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.initial = await read();
   await page.click('.kp-auto__shortcut:has-text("tout")'); await page.waitForTimeout(100);
   await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '1'); await page.waitForTimeout(100);
+  // only the cards I lack: the received card of every accepted offer must be absent from my collection (ids multiple of 3 are owned)
+  await page.check('.kp-check__box >> nth=2'); await page.waitForTimeout(100);
+  out.missingStored = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).autoMissingOnly);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")');
   await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 3, null, { timeout: 20000 });
   // while it runs, the rules are frozen: controls disabled, a click on a chip changes nothing and says why
@@ -74,6 +77,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.unlockedAfterStop = await lockState();
   out.afterRun = await read();
   out.acceptedCalls = accepted.length;
+  out.receivedOwned = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).autoSession.log.map((e) => Number(e.received.id.slice(1)) % 3 === 0));
   // the sum shown equals the sum of the rows' badges (every exchange has known prices here)
   out.sumOfRows = await page.evaluate(() => [...document.querySelectorAll('.kp-deal--auto .kp-gain')].map((b) => Number(b.textContent.replace(/[+\s\u202f]/g, '').replace('−', '-'))).reduce((a, b) => a + b, 0));
   out.shownTotal = Number((out.afterRun.totalGain.match(/([+−±][\d\s\u202f]+) ◆/) ?? [])[1]?.replace(/[+\s\u202f]/g, '').replace('−', '-'));
@@ -87,6 +91,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.afterRestart = await read();
   out.errors = errors;
   const ok = out.initial.titleHidden && out.initial.total === ''
+    && out.missingStored === true && out.receivedOwned.length >= 3 && out.receivedOwned.every((owned) => !owned)
     && out.lockedWhileRunning.locked && out.lockedWhileRunning.chipsDisabled && out.lockedWhileRunning.inputsDisabled && out.afterForcedClick.pressed === out.lockedWhileRunning.pressed && /Arrête l’auto-accept/.test(out.afterForcedClick.toast) && !out.unlockedAfterStop.locked && !out.unlockedAfterStop.chipsDisabled && !out.unlockedAfterStop.inputsDisabled
     && out.afterRun.rows.length >= 3 && out.afterRun.rows.every((r) => /kp-gain--(up|down|flat)/.test(r)) && out.sumOfRows === out.shownTotal
     && new RegExp(`^${out.afterRun.rows.length} échanges · depuis \\d\\d:\\d\\d$`).test(out.afterRun.total) && /kp-gain--up$/.test(out.afterRun.totalGain)

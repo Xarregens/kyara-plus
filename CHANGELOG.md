@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.21
+- Auto-accept : case « Seulement les cartes qu'il me manque » : une offre dont la carte reçue est déjà dans ma
+  collection n'est jamais acceptée. Mémorisée, figée pendant la marche comme les autres règles.
+
 ## 2.35.20
 - Mon activité, Échanges → Tableau : le site ne renvoie que les 30 dernières offres acceptées, sans suite possible
   (sondage du 06/11/2026 : dix façons de demander la suite renvoient les mêmes 30). Le script mémorise désormais chaque
