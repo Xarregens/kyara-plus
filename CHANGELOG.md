@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.11
+- Commande console `kyaraPlusDiag.dialog()` : enregistre la fenêtre ouverte du site (proposition d'échange) avec la
+  réponse fair-play du profil affiché, pour préparer l'aide au choix des cartes. Le script lit maintenant aussi, dans la
+  réponse fair-play du site, les barres du partenaire et ce qui reste entre les deux joueurs (dons et écart dans chaque
+  sens), confirmés par le relevé du 06/11/2026 : 3 000 ◆ de dons et 5 000 ◆ d'écart par sens sur 48 h.
+
 ## 2.35.10
 - Auto-accept : le total depuis l'activation devient une pastille colorée (verte / rouge) plus grande, à droite de la
   ligne « Acceptés », au-dessus de la colonne des gains ; le nombre d'échanges et l'heure restent en gris.

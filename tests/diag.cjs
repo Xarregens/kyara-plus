@@ -54,6 +54,13 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.mask = await page.evaluate(() => { const d = document.createElement('div'); d.textContent = 'contact max@mail.fr ok'; return kyaraPlusDiag.last && (document.body.append(d), kyaraPlusDiag.menu(1), d.click(), kyaraPlusDiag.stop(), kyaraPlusDiag.last.lines.find((l) => l.kind === 'event' && /email/.test(l.target))?.target); });
   const [download] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => kyaraPlusDiag.download())]);
   out.downloadName = download.suggestedFilename();
+  out.dialogNone = await page.evaluate(() => kyaraPlusDiag.dialog());
+  await page.evaluate(() => { const d = document.createElement('div'); d.setAttribute('role', 'dialog'); d.innerHTML = '<p>Proposer à joueur@mail.fr</p>'; document.body.append(d); });
+  const [dialogFile, dialogResult] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => kyaraPlusDiag.dialog())]);
+  out.dialogName = dialogFile.suggestedFilename();
+  out.dialogResult = dialogResult;
+  out.dialogHtml = JSON.parse(require('fs').readFileSync(await dialogFile.path(), 'utf8')).html;
+  await page.evaluate(() => document.querySelector('[role="dialog"]').remove());
   out.offUnknown = await page.evaluate(() => kyaraPlusDiag.off('nimportequoi').slice(0, 40));
   out.off = await page.evaluate(() => kyaraPlusDiag.off('market-offers'));
   await page.waitForTimeout(100);
@@ -73,6 +80,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.boardBack = await page.evaluate(() => Boolean(document.querySelector('.kp-board')));
   out.errors = errors;
   const ok = out.lines.some((l) => /^click button\.kp-chip/.test(l)) && /<email>/.test(out.mask ?? '') && /^kyara-diag-.*\.json$/.test(out.downloadName)
+    && /aucune fenêtre/.test(out.dialogNone) && /^kyara-dialog-.*\.json$/.test(out.dialogName) && /<email>/.test(out.dialogHtml) && !/joueur@/.test(out.dialogHtml) && /role="dialog"/.test(out.dialogHtml)
     && out.oldFormatDropped && out.boardGone && out.stored.ids.join() === 'market-offers' && out.stored.version === out.version && out.boardStillGoneAfterReload
     && /désactivées par kyaraPlusDiag\.off : market-offers\./.test(out.toastAfterReload) && out.boardBackAfterUpdate && out.storedAfterUpdate === null && out.boardBack && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));

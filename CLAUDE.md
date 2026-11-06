@@ -30,6 +30,10 @@ prouvent pas la forme exacte des vraies réponses, qui vient des relevés (comma
 
 ## Ce que le site fait (observé dans les relevés, nov. 2026)
 
+- `/api/fair-play/with/<joueur>` renvoie aussi (relevé du 06/11/2026) `theirReceivedLeft` / `theirFreeLeft` (barres du
+  partenaire), `giveLeft` / `getLeft` (dons encore possibles vers lui / de lui, 3 000 max) et `giveBalanceLeft` /
+  `getBalanceLeft` (écart encore permis dans chaque sens, 5 000 max) ; `maxMargin` et `minPrice` sont des objets par
+  rareté. La fenêtre « Proposer un échange » du site affiche elle-même le don et le reste « entre vous ».
 - Fair-play : deux compteurs sur 48 h glissantes, `myReceivedLeft` (« Dons ») et `myFreeLeft` (« Écart »), lus par
   `/api/fair-play/with/<joueur>`. Un échange à mon avantage consomme `gift = max(0, reçu − freeRatio × donné)` sur Dons et
   `gap − gift` sur Écart (`freeRatio` 2, `ignoreBelow` 100) ; tout revient 48 h plus tard à la minute. Ventes, achats,

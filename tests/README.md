@@ -10,7 +10,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | Script | Page | Ce qu'il vérifie |
 | --- | --- | --- |
 | `cardsview.cjs` | Collection, vue Cartes | Aucun clic automatique sur le « Afficher plus » des cartes, menu du profil qui reste ouvert, bouton non grisé. |
-| `diag.cjs` | Toutes pages | Commandes `kyaraPlusDiag` : enregistrement des événements, masquage des e-mails, téléchargement, désactivation d'une fonction mémorisée au rechargement, oubliée par une nouvelle version, signalée par un message. |
+| `diag.cjs` | Toutes pages | Commandes `kyaraPlusDiag` : enregistrement des événements, masquage des e-mails, téléchargement, désactivation d'une fonction mémorisée au rechargement, oubliée par une nouvelle version, signalée par un message ; enregistrement de la fenêtre ouverte (`dialog()`). |
 | `navigate.cjs` | Accueil → Collection | Navigation interne du site (pushState natif, hors de portée du script) : barre de filtres des albums montée, retirée en partant, remontée au retour. |
 | `lossfilter.cjs` | Tableau des offres | Bouton partagé « Symbios la tepu » / « Sans aucune perte » : cartes cachées selon le côté, exclusivité des côtés. |
 | `smoke.cjs` | Tableau des offres | Temps d'apparition du tableau, de la jauge, des pastilles ; nombre de rendus ; requêtes. |

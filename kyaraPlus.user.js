@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.10
+// @version      2.35.11
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4304,7 +4304,18 @@ Continuer ?`);
       freeRatio: fair.freeRatio,
       ignoreBelow: fair.ignoreBelow,
       // cap of the two counters when the site reports it (the bars are shown "/ maxMargin")
-      maxMargin: typeof fair.maxMargin === "number" ? fair.maxMargin : null
+      maxMargin: typeof fair.maxMargin === "number" ? fair.maxMargin : null,
+      // the partner's own counters and what remains between the two players, as the site reports them (relevé du 06/11/2026 :
+      // theirReceivedLeft / theirFreeLeft, giveLeft / getLeft = gifts I can still make / receive with this player,
+      // giveBalanceLeft / getBalanceLeft = gap still allowed in each direction, all over 48 h)
+      theirGifts: fair.theirReceivedLeft ?? null,
+      theirFreeGaps: fair.theirFreeLeft ?? null,
+      pair: {
+        giftToThem: fair.giveLeft ?? null,
+        giftToMe: fair.getLeft ?? null,
+        flowToThem: fair.giveBalanceLeft ?? null,
+        flowToMe: fair.getBalanceLeft ?? null
+      }
     };
   }
   var HOUR_MS = 36e5;
@@ -4642,7 +4653,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.10";
+  var SURVEY_VERSION = "2.35.11";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -8739,6 +8750,8 @@ button.kp-act__stat:hover,\r
   //   kyaraPlusDiag.on("collection")   → enables them again ; kyaraPlusDiag.features() lists ids and states
   //   kyaraPlusDiag.menu()             → records for 15 s every pointer/focus/scroll event and header mutation,
   //                                      then kyaraPlusDiag.download() saves the recording (e-mails masked)
+  //   kyaraPlusDiag.dialog()           → saves the open dialog of the site (HTML, e-mails masked) with the fair-play
+  //                                      answer for the profile shown, to build features on the trade proposal window
   var DISABLED_SETTING = "disabledFeatures";
   // The switches serve one investigation: they are kept across reloads but dropped by the next version of the script,
   // so a feature switched off while looking into a problem never stays off once the fix is installed.
@@ -8817,16 +8830,29 @@ button.kp-act__stat:hover,\r
       recording.observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeOldValue: false });
       return `enregistrement pendant ${seconds} s : clique sur ton avatar maintenant, puis kyaraPlusDiag.download()`;
     }
+    function saveJson(prefix, data) {
+      const when = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
+      const name = `${prefix}-${when}.json`;
+      const link = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" })), download: name });
+      document.body.append(link);
+      link.click();
+      link.remove();
+      return name;
+    }
     function download() {
       if (recording) stop();
       const data = window.kyaraPlusDiag.last;
       if (!data) return "rien à sauvegarder : lance d’abord kyaraPlusDiag.menu()";
-      const when = new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-");
-      const link = h("a", { href: URL.createObjectURL(new Blob([JSON.stringify(data, null, 1)], { type: "application/json" })), download: `kyara-diag-${when}.json` });
-      document.body.append(link);
-      link.click();
-      link.remove();
-      return `fichier kyara-diag-${when}.json téléchargé (${data.lines.length} lignes)`;
+      return `fichier ${saveJson("kyara-diag", data)} téléchargé (${data.lines.length} lignes)`;
+    }
+    async function dialog() {
+      const node = document.querySelector('[role="dialog"]');
+      if (!node) return "aucune fenêtre ouverte : ouvre d’abord la proposition d’échange, puis relance kyaraPlusDiag.dialog()";
+      const partnerId = profileIdFromPath() ?? null;
+      const fairPlay = partnerId ? await fairPlayApi.withPlayer(partnerId).catch((error) => ({ erreur: describeError(error) })) : null;
+      const html = node.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>");
+      const data = { version: SURVEY_VERSION, page: location.pathname, partnerId, fairPlay, html };
+      return `fichier ${saveJson("kyara-dialog", data)} téléchargé (${formatNumber(html.length)} caractères)`;
     }
     const matching = (prefix) => features.filter((feature) => feature.id === prefix || feature.id.startsWith(`${prefix}-`)).map((feature) => feature.id);
     function setDisabled(prefix, disabled) {
@@ -8841,6 +8867,7 @@ button.kp-act__stat:hover,\r
       menu,
       stop,
       download,
+      dialog,
       last: null,
       off: (prefix) => setDisabled(prefix, true),
       on: (prefix) => setDisabled(prefix, false),
