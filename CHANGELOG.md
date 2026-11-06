@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.25
+- Relevé `kyaraPlusSeries.download()` sur la page Marché : enregistre aussi tous les appels d'échanges directs du site
+  (lecture et envoi de messages), avec la méthode et le contenu envoyé, pour construire la discussion dans la vue
+  Kyara Plus.
+
 ## 2.35.24
 - Mon activité, échanges directs : bouton « Discuter » sur chaque échange à traiter ou envoyé, à côté d'Accepter /
   Refuser / Annuler, qui ouvre la vue du site sur cet échange (la boîte de messages est celle du site). Le lien

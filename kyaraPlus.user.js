@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.24
+// @version      2.35.25
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4968,7 +4968,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.24";
+  var SURVEY_VERSION = "2.35.25";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6562,7 +6562,8 @@ Continuer ?`);
   // Console : kyaraPlusSeries.download()
   var SERIES_SURVEY_PAGES = /* @__PURE__ */ new Set(["/missions", "/collection", "/marche"]);
   // on the market page only the answers Mon activité is built from are kept, whole (a history page is large)
-  var SERIES_SURVEY_MARKET_PATHS = /^\/api\/(me\/market\/history|me\/market|me\/trades|trades\/offers\/mine)(\?|$)/;
+  // every /api/trades/... call is kept too (messages of a trade, read and sent), with its method and request body
+  var SERIES_SURVEY_MARKET_PATHS = /^\/api\/(me\/market\/history|me\/market|me\/trades|trades\/offers\/mine|trades\/)/;
   var SERIES_SURVEY_MAX_ENTRIES = 80;
   var SERIES_SURVEY_MAX_BODY = 6e4;
   var SERIES_SURVEY_MAX_MARKET_BODY = 4e5;
@@ -6578,7 +6579,7 @@ Continuer ?`);
     if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, inner]) => [key, SERIES_SURVEY_SECRET_KEY.test(key) ? "[masqué]" : seriesSurveyMask(inner)]));
     return value;
   }
-  function seriesSurveyRecord(kind, url, status, text) {
+  function seriesSurveyRecord(kind, url, status, text, { method = "GET", requestBody = null } = {}) {
     if (!seriesSurveyWatching()) return;
     let path;
     try {
@@ -6597,7 +6598,13 @@ Continuer ?`);
     }
     const json = JSON.stringify(body);
     const maxBody = location.pathname === "/marche" ? SERIES_SURVEY_MAX_MARKET_BODY : SERIES_SURVEY_MAX_BODY;
-    seriesSurveyLog.push({ at: Date.now(), page: location.pathname + location.search, kind, path, status, truncated: json.length > maxBody, body: json.length > maxBody ? json.slice(0, maxBody) : body });
+    let sent = requestBody;
+    try {
+      sent = requestBody == null ? null : seriesSurveyMask(JSON.parse(requestBody));
+    } catch {
+      sent = typeof requestBody === "string" ? seriesSurveyMask(requestBody).slice(0, 2e3) : null;
+    }
+    seriesSurveyLog.push({ at: Date.now(), page: location.pathname + location.search, kind, method: method.toUpperCase(), path, status, requete: sent, truncated: json.length > maxBody, body: json.length > maxBody ? json.slice(0, maxBody) : body });
     if (seriesSurveyLog.length > SERIES_SURVEY_MAX_ENTRIES) seriesSurveyLog.splice(0, seriesSurveyLog.length - SERIES_SURVEY_MAX_ENTRIES);
   }
   var isBootstrapUrl = (url) => {
@@ -6607,8 +6614,8 @@ Continuer ?`);
       return false;
     }
   };
-  function tapResponse(kind, url, status, text) {
-    if (seriesSurveyWatching()) seriesSurveyRecord(kind, url, status, text);
+  function tapResponse(kind, url, status, text, request = {}) {
+    if (seriesSurveyWatching()) seriesSurveyRecord(kind, url, status, text, request);
     if (status === 200 && isBootstrapUrl(url)) {
       try {
         notifyBootstrap(JSON.parse(text));
@@ -6624,7 +6631,9 @@ Continuer ?`);
         try {
           const url = typeof input === "string" ? input : input?.url ?? String(input);
           if (!seriesSurveyWatching() && !isBootstrapUrl(url)) return;
-          response.clone().text().then((text) => tapResponse("fetch", url, response.status, text)).catch(() => {
+          const method = init?.method ?? input?.method ?? "GET";
+          const requestBody = typeof init?.body === "string" ? init.body : null;
+          response.clone().text().then((text) => tapResponse("fetch", url, response.status, text, { method, requestBody })).catch(() => {
           });
         } catch {
         }
@@ -6635,12 +6644,13 @@ Continuer ?`);
     const { open, send } = XMLHttpRequest.prototype;
     XMLHttpRequest.prototype.open = function(method, url) {
       this.__kpUrl = url;
+      this.__kpMethod = method;
       return open.apply(this, arguments);
     };
-    XMLHttpRequest.prototype.send = function() {
+    XMLHttpRequest.prototype.send = function(body) {
       this.addEventListener("load", () => {
         try {
-          tapResponse("xhr", this.__kpUrl, this.status, this.responseText);
+          tapResponse("xhr", this.__kpUrl, this.status, this.responseText, { method: this.__kpMethod ?? "GET", requestBody: typeof body === "string" ? body : null });
         } catch {
         }
       });
