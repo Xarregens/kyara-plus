@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.15
+// @version      2.35.16
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4215,6 +4215,25 @@ Continuer ?`);
   function verdictRow(who, title, chips) {
     return h("div", { class: "kp-verdict__row" }, h("span", { class: "kp-verdict__who", title }, who), h("span", { class: "kp-costs" }, chips));
   }
+  // Plain words first (who gains, what it costs them, whether the site should accept); the rows of pills are folded
+  // under "Détails" (state kept), because a table of bars is hard to read for someone new to the fair-play
+  var VERDICT_DETAILS_SETTING = "tradeVerdictDetails";
+  function verdictSentence(verdict, partner) {
+    const { me, them, pair, impact, status } = verdict;
+    if (status === "no") {
+      const short = me.overGift ? `il manque ${formatChakra(me.overGift)} sur ta barre Dons` : me.overFree ? `il manque ${formatChakra(me.overFree)} sur ta barre Écart` : them.overGift ? `il manque ${formatChakra(them.overGift)} sur la barre Dons de ${partner}` : them.overFree ? `il manque ${formatChakra(them.overFree)} sur la barre Écart de ${partner}` : pair.overGift ? `la limite de dons entre vous deux serait dépassée de ${formatChakra(pair.overGift)}` : `la limite d’écart entre vous deux serait dépassée de ${formatChakra(pair.overFlow)}`;
+      return `Le site refusera : ${short}.`;
+    }
+    if (!impact) return "Sans effet sur les barres : échange équilibré ou écart trop petit.";
+    if (status === "unknown") return `Barres de ${partner} inconnues : impossible de dire s’il pourra accepter.`;
+    const side = impact.toMe ? me : them;
+    const whose = impact.toMe ? "ta barre" : "sa barre";
+    const bars = [
+      side.gift > 0 ? `${whose} Dons passe de ${formatNumber(side.giftsLeft)} à ${formatNumber(side.giftsLeft - side.gift)}` : null,
+      side.free > 0 ? `${whose} Écart passe de ${formatNumber(side.freeLeft)} à ${formatNumber(side.freeLeft - side.free)}` : null
+    ].filter(Boolean).join(" et ");
+    return `Devrait passer. ${impact.toMe ? "Tu y gagnes" : `${partner} y gagne`} : ${bars}.`;
+  }
   function renderVerdict(verdict, partnerName) {
     const { me, them, pair, impact, status } = verdict;
     const partner = partnerName ?? "lui";
@@ -4228,23 +4247,37 @@ Continuer ?`);
       ]);
     };
     const pairExplain = `Limite entre vous deux seulement, sur 48 h, dans le sens ${toMe ? `${partner} → toi` : `toi → ${partner}`} : ce que le site autorise encore avant cet échange, puis après.`;
-    const statusText4 = status === "ok" ? impact ? "✔ devrait passer" : "✔ sans effet sur les barres" : status === "no" ? "✘ le site refusera" : "? barres inconnues";
-    return h(
-      "div",
-      { class: "kp-verdict" },
-      h(
-        "div",
-        { class: "kp-verdict__head" },
-        h("span", { title: "Calcul du script d’après les prix fair-play des cartes et du chakra des deux plateaux, et les compteurs du site. Ce qui est retiré revient 48 h plus tard." }, "Fair-play"),
-        h("span", { class: `kp-verdict__status kp-verdict__status--${status}` }, statusText4)
-      ),
-      sideRow("Toi", me, true),
-      sideRow(partner, them, false),
-      verdictRow("Entre vous", pairExplain, [
+    const mark = status === "ok" ? "✔" : status === "no" ? "✘" : "?";
+    const open = readSetting(VERDICT_DETAILS_SETTING, false);
+    const toggle = h("button", { class: "kp-verdict__toggle", type: "button", "aria-expanded": String(open), title: "Afficher ou cacher le détail : tes barres, celles de l’autre joueur et la limite entre vous deux, avant et après l’échange." }, "Détails");
+    // only the rows that say something: the player whose bars move (both when nothing moves), then the pair limit
+    const rows = [
+      !impact || toMe ? sideRow("Tes barres", me, true) : null,
+      !impact || !toMe ? sideRow(`Barres de ${partner}`, them, false) : null,
+      verdictRow("Limite entre vous deux", pairExplain, [
         verdictChip(BAR_LABELS.gift, pair.gift, pair.overGift, pair.giftCap, config_default.fairPlay.pairGiftCap, pairExplain),
         verdictChip(BAR_LABELS.free, pair.gap, pair.overFlow, pair.flowCap, config_default.fairPlay.pairFlowCap, pairExplain)
       ])
+    ];
+    const node = h(
+      "div",
+      { class: `kp-verdict${open ? " kp-verdict--open" : ""}` },
+      h(
+        "div",
+        { class: "kp-verdict__head" },
+        h("span", { class: `kp-verdict__status kp-verdict__status--${status}`, "aria-hidden": "true" }, mark),
+        h("span", { class: "kp-verdict__line", title: "Fair-play, calculé par Kyara Plus d’après les prix des deux plateaux et les compteurs du site. Ce qui est retiré d’une barre revient 48 h plus tard." }, verdictSentence(verdict, partner)),
+        toggle
+      ),
+      h("div", { class: "kp-verdict__details" }, rows)
     );
+    toggle.addEventListener("click", () => {
+      const next = !node.classList.contains("kp-verdict--open");
+      node.classList.toggle("kp-verdict--open", next);
+      toggle.setAttribute("aria-expanded", String(next));
+      writeSetting(VERDICT_DETAILS_SETTING, next);
+    });
+    return node;
   }
   var trade_verdict_default = {
     id: "trade-verdict",
@@ -4832,7 +4865,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.15";
+  var SURVEY_VERSION = "2.35.16";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9220,12 +9253,19 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-fair__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
 .kp-verdict { display: flex; flex-direction: column; gap: 6px; margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); font-size: 13px; }
-.kp-verdict__head { display: flex; align-items: center; gap: var(--s-2); color: var(--fg); font-weight: 700; cursor: help; }
-.kp-verdict__status { margin-left: auto; font-weight: 700; white-space: nowrap; }
+.kp-verdict__head { display: flex; align-items: center; gap: var(--s-2); color: var(--fg); }
+.kp-verdict__status { flex: none; font-weight: 800; }
 .kp-verdict__status--ok { color: var(--ok); }
 .kp-verdict__status--no { color: var(--danger); }
 .kp-verdict__status--unknown { color: var(--mut); }
-.kp-verdict__row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: var(--s-2); }
+.kp-verdict__line { flex: 1; min-width: 0; cursor: help; }
+.kp-verdict__toggle { flex: none; margin-left: auto; padding: 2px 8px; border: 1px solid var(--line2); border-radius: var(--r-pill); background: transparent; color: var(--fg2); font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer; }
+.kp-verdict__toggle:hover { background: var(--raise); }
+.kp-verdict__toggle::after { content: " ▾"; }
+.kp-verdict--open .kp-verdict__toggle::after { content: " ▴"; }
+.kp-verdict__details { display: none; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line2); }
+.kp-verdict--open .kp-verdict__details { display: flex; }
+.kp-verdict__row { display: grid; grid-template-columns: 150px minmax(0, 1fr); align-items: center; gap: var(--s-2); }
 .kp-verdict__who { overflow: hidden; color: var(--fg2); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
 .kp-verdict .kp-costs { justify-content: flex-start; }
 .kp-verdict .kp-cost { padding: 3px 10px 3px 8px; font-size: 13px; cursor: help; }

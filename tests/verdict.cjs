@@ -37,16 +37,23 @@ const dialog = `<div role="dialog" aria-modal="true" tabindex="-1" class="box wi
   const read = () => page.evaluate(() => {
     const v = document.querySelector('.kp-verdict');
     if (!v) return null;
+    const chip = (c) => `${[...c.childNodes].map((n) => n.classList?.contains('kp-verdict__arrow') ? ' → ' : n.textContent).join('')} [${c.className.match(/kp-cost--(\w+)/)[1]}]`;
     return {
       afterSiteBand: v.previousElementSibling?.classList.contains('verdict') ?? false,
-      status: v.querySelector('.kp-verdict__status').textContent + ' | ' + v.querySelector('.kp-verdict__status').className.replace(/kp-verdict__status\s*/g, '').trim(),
-      rows: [...v.querySelectorAll('.kp-verdict__row')].map((r) => r.querySelector('.kp-verdict__who').textContent + ' : ' + [...r.querySelectorAll('.kp-cost')].map((c) => `${[...c.childNodes].map((n) => n.classList?.contains('kp-verdict__arrow') ? ' → ' : n.textContent).join('')} [${c.className.match(/kp-cost--(\w+)/)[1]}]`).join(' · ')),
+      mark: v.querySelector('.kp-verdict__status').textContent + ' ' + v.querySelector('.kp-verdict__status').className.match(/status--(\w+)/)[1],
+      line: v.querySelector('.kp-verdict__line').textContent,
+      open: v.classList.contains('kp-verdict--open'),
+      detailsVisible: getComputedStyle(v.querySelector('.kp-verdict__details')).display !== 'none',
+      rows: [...v.querySelectorAll('.kp-verdict__row')].map((r) => r.querySelector('.kp-verdict__who').textContent + ' : ' + [...r.querySelectorAll('.kp-cost')].map(chip).join(' · ')),
       titles: [...v.querySelectorAll('.kp-verdict__row .kp-cost')].map((c) => c.title),
     };
   });
   const setTotals = (mine, theirs) => page.evaluate(([a, b]) => { const t = document.querySelectorAll('.trays .total'); t[0].textContent = `≈ ${a} ◆`; t[1].textContent = `≈ ${b} ◆`; }, [mine, theirs]);
   out.initial = await read();
   out.arrowIcon = await page.evaluate(() => Boolean(document.querySelector('.kp-verdict .kp-cost .kp-verdict__arrow i.fa-arrow-right-long')));
+  await page.click('.kp-verdict__toggle'); await page.waitForTimeout(100);
+  out.opened = await read();
+  out.storedOpen = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).tradeVerdictDetails);
   await setTotals('2 000', '100'); await page.waitForTimeout(150);
   out.giving = await read();
   await setTotals('100', '20 000'); await page.waitForTimeout(150);
@@ -60,12 +67,14 @@ const dialog = `<div role="dialog" aria-modal="true" tabindex="-1" class="box wi
   const norm = (s) => s.replace(/[\s  ]/g, ' ');
   const rows = (r) => r.rows.map(norm);
   const ok = out.arrowIcon && !out.beforeOpen && out.initial.afterSiteBand
-    && /devrait passer/.test(out.initial.status) && /--ok/.test(out.initial.status)
-    && rows(out.initial)[0] === 'Toi : Dons 9 215 → 8 961 [gift] · Écart 15 726 → 15 303 [free]' && rows(out.initial)[1] === 'ItoVeVe : Dons 10 000 [none] · Écart 20 000 [none]' && rows(out.initial)[2] === 'Entre vous : Dons 3 000 → 2 746 [gift] · Écart 5 000 → 4 323 [free]'
-    && /9 215 ◆ disponibles avant cet échange, 8 961 ◆ après \(10 000 ◆ au maximum\)/.test(norm(out.initial.titles[0])) && /15 303 ◆ après \(20 000 ◆ au maximum\)/.test(norm(out.initial.titles[1])) && /3 000 ◆ disponibles avant cet échange, 2 746 ◆ après \(3 000 ◆ au maximum\)/.test(norm(out.initial.titles[4]))
-    && rows(out.giving)[0] === 'Toi : Dons 9 215 [none] · Écart 15 726 [none]' && rows(out.giving)[1] === 'ItoVeVe : Dons 10 000 → 8 200 [gift] · Écart 20 000 → 19 900 [free]' && rows(out.giving)[2] === 'Entre vous : Dons 3 000 → 1 200 [gift] · Écart 5 000 → 3 100 [free]' && /10 000 ◆ disponibles avant cet échange, 8 200 ◆ après/.test(norm(out.giving.titles[2]))
-    && /refusera/.test(out.refused.status) && /--no/.test(out.refused.status) && rows(out.refused)[0] === 'Toi : Dons manque 10 585 [over] · Écart 15 726 → 15 626 [free]' && rows(out.refused)[2] === 'Entre vous : Dons manque 16 800 [over] · Écart manque 14 900 [over]'
-    && /sans effet/.test(out.balanced.status) && rows(out.balanced)[0] === 'Toi : Dons 9 215 [none] · Écart 15 726 [none]' && rows(out.balanced)[2] === 'Entre vous : Dons 3 000 [none] · Écart 5 000 [none]'
+    && out.initial.mark === '✔ ok' && norm(out.initial.line) === 'Devrait passer. Tu y gagnes : ta barre Dons passe de 9 215 à 8 961 et ta barre Écart passe de 15 726 à 15 303.'
+    && !out.initial.open && !out.initial.detailsVisible && out.opened.open && out.opened.detailsVisible && out.storedOpen === true
+    && rows(out.opened).join(' | ') === 'Tes barres : Dons 9 215 → 8 961 [gift] · Écart 15 726 → 15 303 [free] | Limite entre vous deux : Dons 3 000 → 2 746 [gift] · Écart 5 000 → 4 323 [free]'
+    && /9 215 ◆ disponibles avant cet échange, 8 961 ◆ après \(10 000 ◆ au maximum\)/.test(norm(out.opened.titles[0]))
+    && out.giving.open && norm(out.giving.line) === 'Devrait passer. ItoVeVe y gagne : sa barre Dons passe de 10 000 à 8 200 et sa barre Écart passe de 20 000 à 19 900.'
+    && rows(out.giving).join(' | ') === 'Barres de ItoVeVe : Dons 10 000 → 8 200 [gift] · Écart 20 000 → 19 900 [free] | Limite entre vous deux : Dons 3 000 → 1 200 [gift] · Écart 5 000 → 3 100 [free]'
+    && out.refused.mark === '✘ no' && norm(out.refused.line) === 'Le site refusera : il manque 10 585 ◆ sur ta barre Dons.' && rows(out.refused)[0] === 'Tes barres : Dons manque 10 585 [over] · Écart 15 726 → 15 626 [free]' && rows(out.refused)[1] === 'Limite entre vous deux : Dons manque 16 800 [over] · Écart manque 14 900 [over]'
+    && out.balanced.mark === '✔ ok' && /^Sans effet sur les barres/.test(out.balanced.line) && rows(out.balanced).join(' | ') === 'Tes barres : Dons 9 215 [none] · Écart 15 726 [none] | Barres de ItoVeVe : Dons 10 000 [none] · Écart 20 000 [none] | Limite entre vous deux : Dons 3 000 [none] · Écart 5 000 [none]'
     && !out.afterClose && out.fairCalls === 1 && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');

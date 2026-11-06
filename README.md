@@ -39,9 +39,9 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
   « Masquer les déjà réclamées », chargement automatique et discret des paquets de séries quand des filtres sont actifs.
 
 **Proposer un échange (profil d'un joueur)**
-- Bloc Fair-play sous la bande du site : ce que l'échange retirerait aux barres Dons / Écart de chacun des deux joueurs,
-  ce qu'il prend sur les limites entre vous deux, et si le site devrait l'accepter ; mis à jour à chaque carte ou chakra
-  ajouté, avant l'envoi.
+- Sous la bande du site, une phrase dit si le site devrait accepter et ce que l'échange retire aux barres Dons / Écart
+  du joueur qui y gagne ; « Détails » déplie les pastilles (barres de chacun, limite entre vous deux, avant → après).
+  Mis à jour à chaque carte ou chakra ajouté, avant l'envoi.
 
 **Mon activité**
 - Deux onglets, Échanges (Reçus, Envoyés, Tableau) et Transactions (Ventes, Achats, Ordres), sous-catégories sous
