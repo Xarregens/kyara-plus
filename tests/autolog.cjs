@@ -50,6 +50,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
     status: document.querySelector('.kp-auto .kp-muted')?.textContent ?? '',
     titleHidden: document.querySelector('.kp-auto__subtitle--log').hidden,
     total: document.querySelector('.kp-auto__total').textContent,
+    totalGain: document.querySelector('.kp-auto__total-gain').hidden ? '' : document.querySelector('.kp-auto__total-gain').textContent + ' | ' + document.querySelector('.kp-auto__total-gain').className,
     totalTitle: document.querySelector('.kp-auto__total').title,
     rows: [...document.querySelectorAll('.kp-deal--auto')].map((r) => `${r.querySelector('.kp-name').textContent} | ${r.querySelector('.kp-gain').textContent} | ${r.querySelector('.kp-gain').className}`),
     stored: JSON.parse(localStorage.getItem('kyara-plus:settings')).autoSession ?? null,
@@ -64,7 +65,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.acceptedCalls = accepted.length;
   // the sum shown equals the sum of the rows' badges (every exchange has known prices here)
   out.sumOfRows = await page.evaluate(() => [...document.querySelectorAll('.kp-deal--auto .kp-gain')].map((b) => Number(b.textContent.replace(/[+\s\u202f]/g, '').replace('−', '-'))).reduce((a, b) => a + b, 0));
-  out.shownTotal = Number((out.afterRun.total.match(/([+−±][\d\s\u202f]+) ◆/) ?? [])[1]?.replace(/[+\s\u202f]/g, '').replace('−', '-'));
+  out.shownTotal = Number((out.afterRun.totalGain.match(/([+−±][\d\s\u202f]+) ◆/) ?? [])[1]?.replace(/[+\s\u202f]/g, '').replace('−', '-'));
   await page.reload(); await page.addScriptTag({ content: script });
   await page.waitForFunction(() => /\d+ offres?$/.test(document.querySelector('.kp-board .kp-muted')?.textContent ?? ''), null, { timeout: 30000 });
   await page.click('.kp-side__tabs [role="tab"]:has-text("Auto-accept")'); await page.waitForTimeout(200);
@@ -76,10 +77,10 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.errors = errors;
   const ok = out.initial.titleHidden && out.initial.total === ''
     && out.afterRun.rows.length >= 3 && out.afterRun.rows.every((r) => /kp-gain--(up|down|flat)/.test(r)) && out.sumOfRows === out.shownTotal
-    && new RegExp(`^${out.afterRun.rows.length} échanges · [+−±][\\d\\s\\u202f]+ ◆ · depuis \\d\\d:\\d\\d$`).test(out.afterRun.total)
+    && new RegExp(`^${out.afterRun.rows.length} échanges · depuis \\d\\d:\\d\\d$`).test(out.afterRun.total) && /kp-gain--up$/.test(out.afterRun.totalGain)
     && /Par rareté donnée :\n/.test(out.afterRun.totalTitle) && out.afterRun.stored.session.count === out.afterRun.rows.length
-    && out.afterReload.total === out.afterRun.total && out.afterReload.rows.join() === out.afterRun.rows.join()
-    && out.afterRestart.rows.length === 0 && out.afterRestart.total === '' && out.afterRestart.titleHidden && out.afterRestart.stored.session.count === 0
+    && out.afterReload.total === out.afterRun.total && out.afterReload.totalGain === out.afterRun.totalGain && out.afterReload.rows.join() === out.afterRun.rows.join()
+    && out.afterRestart.rows.length === 0 && out.afterRestart.total === '' && out.afterRestart.totalGain === '' && out.afterRestart.titleHidden && out.afterRestart.stored.session.count === 0
     && /auto-accept actif, 0 échange/.test(out.afterRestart.status) && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');

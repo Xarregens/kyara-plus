@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.9
+// @version      2.35.10
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4642,7 +4642,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.9";
+  var SURVEY_VERSION = "2.35.10";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5498,15 +5498,15 @@ Continuer ?`);
   }
   // "8 échanges · +1 240 ◆ depuis 01:43", the detail per given rarity in the tooltip
   function sessionSummary(session) {
-    if (!session.count) return { text: "", title: "" };
-    const parts = [plural(session.count, "échange"), `${formatGain(session.gain)} ◆`];
+    if (!session.count) return { text: "", gain: null, title: "" };
+    const parts = [plural(session.count, "échange")];
     if (session.since) parts.push(`depuis ${timeFormat2.format(session.since)}`);
     const lines = [`Gain estimé depuis l’activation : somme des écarts de prix moyen (carte reçue − carte donnée), pas du chakra réellement encaissé.${session.unknown ? ` ${plural(session.unknown, "échange")} sans prix connu, non compté${session.unknown > 1 ? "s" : ""}.` : ""}`, "Par rareté donnée :"];
     for (const give of GIVEN) {
       const row = session.byGive[give];
       if (row) lines.push(`${RARITY_LABELS[give]} : ${plural(row.count, "échange")}, ${formatGain(row.gain)} ◆${row.unknown ? ` (${row.unknown} sans prix)` : ""}`);
     }
-    return { text: parts.join(" · "), title: lines.join("\n") };
+    return { text: parts.join(" · "), gain: session.gain, title: lines.join("\n") };
   }
   // One sentence per rarity I give: "Je donne une Commune, contre une : [Mythique] [Légendaire] …"
   var allRuleKeys = () => GIVEN.flatMap((give) => receivableFor(give).map((receive) => ruleKey(give, receive)));
@@ -5577,7 +5577,8 @@ Continuer ?`);
     const toggle = h("button", { class: "kp-btn kp-btn--sm", type: "button" });
     const log = h("div", { class: "kp-deals" });
     const logTotal = h("span", { class: "kp-auto__total kp-muted" });
-    const logTitle = h("h4", { class: "kp-auto__subtitle kp-auto__subtitle--log" }, "Acceptés", logTotal);
+    const logGain = h("span", { class: "kp-gain kp-auto__total-gain" });
+    const logTitle = h("h4", { class: "kp-auto__subtitle kp-auto__subtitle--log" }, "Acceptés", logTotal, logGain);
     const gainCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     const gainInput = h("input", {
       class: "kp-input kp-input--short",
@@ -5647,6 +5648,10 @@ Continuer ?`);
       const summary = sessionSummary(auto.session);
       logTotal.textContent = summary.text;
       logTotal.title = summary.title;
+      logGain.hidden = summary.gain == null;
+      logGain.textContent = summary.gain == null ? "" : `${formatGain(summary.gain)} ◆`;
+      logGain.title = summary.title;
+      logGain.className = `kp-gain kp-auto__total-gain kp-gain--${!summary.gain ? "flat" : summary.gain > 0 ? "up" : "down"}`;
       log.replaceChildren(...auto.log.map(logRow2));
     }
     return { root, render };
@@ -9009,9 +9014,11 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
 .kp-auto__section { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--line2); }
 .kp-auto__subtitle { margin: 0; color: var(--fg); font-size: var(--t-sm); font-weight: 700; }
-.kp-auto__subtitle--log { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
+.kp-auto__subtitle--log { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }
 .kp-auto__total { font-size: 11px; font-weight: 600; cursor: help; }
 .kp-auto__total:empty { display: none; }
+.kp-auto__total-gain { margin-left: auto; padding: 2px 10px; font-size: 13px; font-weight: 800; cursor: help; }
+.kp-auto__total-gain[hidden] { display: none; }
 .kp-deal--auto { grid-template-columns: 44px auto 44px minmax(0, 1fr) auto; }
 .kp-deal--auto > .kp-gain { align-self: center; padding: 0 6px; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .kp-rule-rows { display: flex; flex-direction: column; gap: 4px; }

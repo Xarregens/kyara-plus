@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.10
+- Auto-accept : le total depuis l'activation devient une pastille colorée (verte / rouge) plus grande, à droite de la
+  ligne « Acceptés », au-dessus de la colonne des gains ; le nombre d'échanges et l'heure restent en gris.
+
 ## 2.35.9
 - Auto-accept : chaque échange de la liste « Acceptés » affiche à droite son gain estimé (prix moyen de la carte reçue
   moins celui de la carte donnée, détail au survol). Sur la ligne « Acceptés », le total depuis l'activation :
