@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.8
+// @version      2.35.9
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4642,7 +4642,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.8";
+  var SURVEY_VERSION = "2.35.9";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -4799,10 +4799,32 @@ Continuer ?`);
     minGain: readSetting("autoMinGain", config_default.autoAccept.defaultMinGain),
     // per given rarity: minimum gain (received price − given price) for the rarity rules of that row; absent = no condition
     rowMinGain: readSetting("autoRowMinGain", {}),
-    log: [],
+    // what the auto-accept did since it was last switched on: the last exchanges and the running totals of their
+    // estimated gains (received price − given price, as the badges of the board); kept across reloads, reset by "Activer"
+    ...readAutoSession(),
     stopReason: null,
     giftLimited: 0
   });
+  var AUTO_SESSION_SETTING = "autoSession";
+  var emptyAutoSession = (since) => ({ since, count: 0, gain: 0, unknown: 0, byGive: {} });
+  function readAutoSession() {
+    const stored = readSetting(AUTO_SESSION_SETTING, null);
+    const session = stored?.session?.since ? stored.session : emptyAutoSession(null);
+    return { session, log: Array.isArray(stored?.log) ? stored.log : [] };
+  }
+  var writeAutoSession = ({ session, log }) => writeSetting(AUTO_SESSION_SETTING, { session, log: log.slice(0, config_default.autoAccept.logLimit) });
+  function addToAutoSession(session, entry) {
+    const given = entry.given.rarity;
+    const row = session.byGive[given] ?? { count: 0, gain: 0, unknown: 0 };
+    const known = entry.gain != null;
+    return {
+      ...session,
+      count: session.count + 1,
+      gain: session.gain + (known ? entry.gain : 0),
+      unknown: session.unknown + (known ? 0 : 1),
+      byGive: { ...session.byGive, [given]: { count: row.count + 1, gain: row.gain + (known ? entry.gain : 0), unknown: row.unknown + (known ? 0 : 1) } }
+    };
+  }
   var autoSettings = ({ rules, doublesOnly, gainEnabled, minGain, rowMinGain = {} }) => ({
     rules,
     doublesOnly,
@@ -4841,9 +4863,11 @@ Continuer ?`);
         return;
       }
       acceptedAt.push(Date.now());
-      const entry = { id: analysis.offer.id, received: analysis.received, given: option.card, at: Date.now() };
-      patch({ log: [entry, ...auto().log].slice(0, config_default.autoAccept.logLimit) });
-      toast(`Auto-accept : ${analysis.received.name} reçue contre ${option.card.name}.`, "success");
+      const entry = { id: analysis.offer.id, received: analysis.received, given: option.card, at: Date.now(), gain: option.gain ?? null, receivedPrice: analysis.receivedPrice ?? null, givenPrice: option.price ?? null };
+      const next = { log: [entry, ...auto().log].slice(0, config_default.autoAccept.logLimit), session: addToAutoSession(auto().session, entry) };
+      writeAutoSession(next);
+      patch(next);
+      toast(`Auto-accept : ${analysis.received.name} reçue contre ${option.card.name}${option.gain != null ? ` (${formatGain(option.gain)} ◆)` : ""}.`, "success");
     }
     async function drain() {
       if (running) return;
@@ -4861,7 +4885,9 @@ Continuer ?`);
       }
     }
     function setEnabled(enabled) {
-      patch({ enabled, stopReason: null, giftLimited: 0 });
+      const fresh = enabled ? { log: [], session: emptyAutoSession(Date.now()) } : {};
+      if (enabled) writeAutoSession(fresh);
+      patch({ enabled, stopReason: null, giftLimited: 0, ...fresh });
       if (enabled) drain();
     }
     function toggleRule(key) {
@@ -5445,16 +5471,19 @@ Continuer ?`);
   var timeFormat2 = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
   function statusText3({ auto, live }) {
     const parts = [live ? "En direct" : "Suivi en direct arrêté"];
-    if (auto.enabled) parts.push(`auto-accept actif, ${plural(auto.log.length, "échange")}`);
+    if (auto.enabled) parts.push(`auto-accept actif, ${plural(auto.session.count, "échange")}`);
     else if (auto.stopReason) parts.push(`auto-accept arrêté : ${auto.stopReason}`);
     else if (!hasAutoRule(autoSettings(auto))) parts.push("choisis ci-dessous ce qu’il peut accepter tout seul");
     if (auto.giftLimited) parts.push(`ignorées (limite de dons) : ${plural(auto.giftLimited, "offre")}`);
     return parts.join(" · ");
   }
-  function logRow2({ received, given, at }) {
+  var gainTitle = (receivedPrice, givenPrice) => `Gain estimé : prix moyen de la carte reçue (${formatPrice(receivedPrice)}) moins celui de la carte donnée (${formatPrice(givenPrice)}).`;
+  function logRow2({ received, given, at, gain, receivedPrice, givenPrice }) {
+    const badge = gainBadge(gain);
+    badge.title = gainTitle(receivedPrice, givenPrice);
     return h(
       "div",
-      { class: "kp-deal" },
+      { class: "kp-deal kp-deal--auto" },
       cardArt(received, "sm"),
       swapIcon(),
       cardArt(given, "sm"),
@@ -5463,8 +5492,21 @@ Continuer ?`);
         { class: "kp-deal__info" },
         h("strong", { class: "kp-name", title: received.name }, received.name),
         h("span", { class: "kp-note", title: given.name }, `contre ${given.name} · ${timeFormat2.format(at)}`)
-      )
+      ),
+      badge
     );
+  }
+  // "8 échanges · +1 240 ◆ depuis 01:43", the detail per given rarity in the tooltip
+  function sessionSummary(session) {
+    if (!session.count) return { text: "", title: "" };
+    const parts = [plural(session.count, "échange"), `${formatGain(session.gain)} ◆`];
+    if (session.since) parts.push(`depuis ${timeFormat2.format(session.since)}`);
+    const lines = [`Gain estimé depuis l’activation : somme des écarts de prix moyen (carte reçue − carte donnée), pas du chakra réellement encaissé.${session.unknown ? ` ${plural(session.unknown, "échange")} sans prix connu, non compté${session.unknown > 1 ? "s" : ""}.` : ""}`, "Par rareté donnée :"];
+    for (const give of GIVEN) {
+      const row = session.byGive[give];
+      if (row) lines.push(`${RARITY_LABELS[give]} : ${plural(row.count, "échange")}, ${formatGain(row.gain)} ◆${row.unknown ? ` (${row.unknown} sans prix)` : ""}`);
+    }
+    return { text: parts.join(" · "), title: lines.join("\n") };
   }
   // One sentence per rarity I give: "Je donne une Commune, contre une : [Mythique] [Légendaire] …"
   var allRuleKeys = () => GIVEN.flatMap((give) => receivableFor(give).map((receive) => ruleKey(give, receive)));
@@ -5534,7 +5576,8 @@ Continuer ?`);
     const status = h("p", { class: "kp-muted" });
     const toggle = h("button", { class: "kp-btn kp-btn--sm", type: "button" });
     const log = h("div", { class: "kp-deals" });
-    const logTitle = h("h4", { class: "kp-auto__subtitle" }, "Acceptés");
+    const logTotal = h("span", { class: "kp-auto__total kp-muted" });
+    const logTitle = h("h4", { class: "kp-auto__subtitle kp-auto__subtitle--log" }, "Acceptés", logTotal);
     const gainCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     const gainInput = h("input", {
       class: "kp-input kp-input--short",
@@ -5600,7 +5643,10 @@ Continuer ?`);
         const floor = auto.rowMinGain?.[give];
         if (document.activeElement !== input) input.value = floor == null ? "" : String(floor);
       }
-      logTitle.hidden = auto.log.length === 0;
+      logTitle.hidden = auto.session.count === 0 && auto.log.length === 0;
+      const summary = sessionSummary(auto.session);
+      logTotal.textContent = summary.text;
+      logTotal.title = summary.title;
       log.replaceChildren(...auto.log.map(logRow2));
     }
     return { root, render };
@@ -8963,6 +9009,11 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
 .kp-auto__section { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--line2); }
 .kp-auto__subtitle { margin: 0; color: var(--fg); font-size: var(--t-sm); font-weight: 700; }
+.kp-auto__subtitle--log { display: flex; align-items: baseline; gap: var(--s-2); flex-wrap: wrap; }
+.kp-auto__total { font-size: 11px; font-weight: 600; cursor: help; }
+.kp-auto__total:empty { display: none; }
+.kp-deal--auto { grid-template-columns: 44px auto 44px minmax(0, 1fr) auto; }
+.kp-deal--auto > .kp-gain { align-self: center; padding: 0 6px; font-size: 11px; font-weight: 800; white-space: nowrap; }
 .kp-rule-rows { display: flex; flex-direction: column; gap: 4px; }
 .kp-rule-rows__head { display: grid; grid-template-columns: 118px 1fr auto 86px; align-items: center; gap: var(--s-2); padding: 0 2px 2px; }
 .kp-rule-rows__floor { text-align: right; }

@@ -22,6 +22,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `tree.cjs` | Mon activité | Onglets centrés, cadre des sous-catégories et sa pointe. |
 | `held.cjs` | En-tête du site | Badge « +N » du chakra bloqué, mise à jour par les réponses bootstrap, réattachement. |
 | `autopanel.cjs` | Auto-accept | Lignes par rareté, pastilles, tout / rien, gain global, doublons, seuil par ligne. |
+| `autolog.cjs` | Auto-accept | Gain estimé sur chaque ligne « Acceptés », total depuis l'activation (détail par rareté en infobulle), mémorisé au rechargement, remis à zéro par « Activer ». |
 | `claims2.cjs` | Collection (albums) | Badges « déjà réclamée » / « à réclamer », bouton « Masquer les déjà réclamées ». |
 | `autoexpand3.cjs` | Collection (albums) | Chargement automatique des paquets quand des filtres sont actifs, sans clignotement. |
 | `survey.cjs` | Mon activité | Commande console `kyaraPlusReleve` (relevé fair-play). |

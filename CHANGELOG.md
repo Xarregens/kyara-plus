@@ -4,6 +4,13 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.9
+- Auto-accept : chaque échange de la liste « Acceptés » affiche à droite son gain estimé (prix moyen de la carte reçue
+  moins celui de la carte donnée, détail au survol). Sur la ligne « Acceptés », le total depuis l'activation :
+  « 8 échanges · +1 240 ◆ · depuis 01:43 », avec le détail par rareté donnée en infobulle. Mémorisé au rechargement de
+  la page, remis à zéro par « Activer » ; la phrase d'état compte désormais tous les échanges, plus seulement les 8
+  derniers affichés. Le message de confirmation indique aussi le gain.
+
 ## 2.35.8
 - Collection : la barre de filtres des albums (Min. / Max. persos, « Il ne manque que », « Masquer les déjà réclamées »)
   et les cartes manquantes d'un album pouvaient manquer quand on arrivait sur la page par un lien du site (sans

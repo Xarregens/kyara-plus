@@ -31,6 +31,8 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
 **Auto-accept**
 - Une ligne par rareté donnée, pastilles des raretés acceptées en retour, dont la même rareté (⇄) ; gain minimum par ligne
   (`gain ≥`) ; règle globale « Ou si gain ≥ » ; « Seulement mes doublons » ; raccourcis tout / rien.
+- Liste « Acceptés » avec le gain estimé de chaque échange et le total depuis l'activation (détail par rareté au survol),
+  mémorisé au rechargement.
 
 **Collection et séries**
 - Badge « déjà réclamée » / « à réclamer » sur chaque série (données `/api/me/progress` du site), bouton
