@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.14
+// @version      2.35.15
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4832,7 +4832,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.14";
+  var SURVEY_VERSION = "2.35.15";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9219,17 +9219,19 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-legend__item { display: inline-flex; align-items: center; gap: 4px; color: var(--kp-cost-color); font-weight: 600; }
 .kp-fair__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
-.kp-verdict { display: flex; flex-direction: column; gap: 5px; margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); font-size: var(--t-meta); }
+.kp-verdict { display: flex; flex-direction: column; gap: 6px; margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); font-size: 13px; }
 .kp-verdict__head { display: flex; align-items: center; gap: var(--s-2); color: var(--fg); font-weight: 700; cursor: help; }
 .kp-verdict__status { margin-left: auto; font-weight: 700; white-space: nowrap; }
 .kp-verdict__status--ok { color: var(--ok); }
 .kp-verdict__status--no { color: var(--danger); }
 .kp-verdict__status--unknown { color: var(--mut); }
-.kp-verdict__row { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; gap: var(--s-2); }
+.kp-verdict__row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: var(--s-2); }
 .kp-verdict__who { overflow: hidden; color: var(--fg2); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
 .kp-verdict .kp-costs { justify-content: flex-start; }
-.kp-verdict .kp-cost { cursor: help; }
-.kp-verdict__arrow { display: inline-flex; align-items: center; margin: 0 5px; font-size: 12px; line-height: 1; }
+.kp-verdict .kp-cost { padding: 3px 10px 3px 8px; font-size: 13px; cursor: help; }
+.kp-verdict .kp-costs { gap: 6px; }
+.kp-verdict .kp-cost__dot { width: 8px; height: 8px; }
+.kp-verdict__arrow { display: inline-flex; align-items: center; margin: 0 6px; font-size: 14px; line-height: 1; }
 .kp-auto__section { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--line2); }
 .kp-auto__subtitle { margin: 0; color: var(--fg); font-size: var(--t-sm); font-weight: 700; }
 .kp-auto__subtitle--log { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }

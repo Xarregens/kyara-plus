@@ -4,6 +4,9 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.15
+- Bloc Fair-play de l'échange : pastilles, chiffres et libellés plus grands (13 px au lieu de 10).
+
 ## 2.35.14
 - Bloc Fair-play de l'échange : la flèche « avant → après » des pastilles devient une vraie flèche, lisible (elle
   ressemblait à un signe moins).
