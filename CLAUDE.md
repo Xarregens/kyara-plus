@@ -51,6 +51,10 @@ prouvent pas la forme exacte des vraies réponses, qui vient des relevés (comma
 - Un `.click()` synthétique sur un bouton du site est vu par le site comme un vrai clic : il ferme tout menu ouvert
   (profil…). Ne cliquer que la cible voulue et seulement quand elle existe (`albumShowMore()` dans collection-albums :
   la vue Cartes a son propre « Afficher plus », avec le même sélecteur `main .more button`).
+- Fenêtre « Proposer un échange » (`[role=dialog]`, enregistrement du 06/11/2026) : `form .trays section.tray` (la
+  mienne a la classe `mine`), `header .total` = « ≈ 423 ◆ » cartes + chakra aux prix fair-play, `.slots li img` =
+  `/cards/sm/<id>.webp`, `label.ch input` = chakra, puis `.verdict` (bande du site), puis `.shelf` (grille). Le bloc
+  `kp-verdict` du script s'insère après `.verdict`. `kyaraPlusDiag.dialog()` enregistre la fenêtre ouverte.
 - `/collection` sert les deux vues (Cartes et Albums) sur la même URL : une feature « albums » tourne aussi en vue Cartes.
 
 ## Goûts du propriétaire

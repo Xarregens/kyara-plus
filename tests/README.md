@@ -15,6 +15,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `lossfilter.cjs` | Tableau des offres | Bouton partagé « Symbios la tepu » / « Sans aucune perte » : cartes cachées selon le côté, exclusivité des côtés. |
 | `smoke.cjs` | Tableau des offres | Temps d'apparition du tableau, de la jauge, des pastilles ; nombre de rendus ; requêtes. |
 | `interact.cjs` | Tableau des offres | Masquer / réafficher, « Voir plus », filtres, recherche, « Donner » (état occupé + refus serveur). |
+| `verdict.cjs` | Proposer un échange | Bloc Fair-play sous la bande du site : barres de chaque joueur, limites entre eux, verdict ; mise à jour quand les totaux changent ; retrait à la fermeture. |
 | `widths.cjs` | Panneau de droite | Tuiles de même largeur, aucun bouton tronqué. |
 | `sublatency.cjs` | Mon activité (Échanges) | Délai clic → affichage des sous-catégories, pendant et après le chargement. Args : latence ms, pages. |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |

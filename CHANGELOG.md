@@ -4,6 +4,13 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.12
+- Fenêtre « Proposer un échange » : sous la bande du site, un bloc Fair-play indique, avant l'envoi et à chaque carte ou
+  chakra ajouté, ce que l'échange retirerait aux barres Dons / Écart de chacun des deux joueurs (pastilles orange / bleue,
+  grises quand rien n'est entamé, rouges avec le montant manquant), ce qu'il prend sur les limites entre vous deux
+  (dons et écart dans le sens de l'échange, sur ce que le site autorise encore), et un verdict : « devrait passer »,
+  « le site refusera » ou « sans effet sur les barres ». Infobulles avec le reste de chaque barre.
+
 ## 2.35.11
 - Commande console `kyaraPlusDiag.dialog()` : enregistre la fenêtre ouverte du site (proposition d'échange) avec la
   réponse fair-play du profil affiché, pour préparer l'aide au choix des cartes. Le script lit maintenant aussi, dans la

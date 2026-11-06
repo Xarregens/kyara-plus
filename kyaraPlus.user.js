@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.11
+// @version      2.35.12
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4147,6 +4147,177 @@ Continuer ?`);
     }
   };
 
+  // src/features/trade-verdict.js
+  // "Proposer un échange" : what the trade would draw from each player's 48 h bars (Dons / Écart) and from the allowance
+  // between the two players, before the proposal is sent. Values come from the totals the site shows on its two trays
+  // (cards + chakra, fair-play prices, enregistrement du 06/11/2026) and from /fair-play/with/<joueur>, which also gives
+  // the partner's bars and the gift / gap left between the two players. The site's own band only states the gift.
+  config_default.tradeVerdict = { refreshMs: 30 * 1e3 };
+  var TRADE_DIALOG = '[role="dialog"]';
+  var TRADE_TRAYS = ".trays";
+  var TRADE_TRAY = "section.tray";
+  var TRADE_SITE_VERDICT = ".verdict";
+  function trayTotal(tray) {
+    const digits = tray.querySelector("header .total")?.textContent.replace(/\D/g, "") ?? "";
+    if (digits) return Number(digits);
+    return tray.querySelector(".slots li") ? null : 0;
+  }
+  var partnerNameOf = (dialog) => (dialog.getAttribute("aria-label") ?? dialog.querySelector("h2")?.textContent ?? "").match(/à\s+(.+?)\s*$/)?.[1] ?? null;
+  // One player's side: what the trade draws from their bars and what would be missing
+  function verdictSide(draw, giftsLeft, freeLeft) {
+    const gift = draw?.gift ?? 0;
+    const free = draw?.free ?? 0;
+    return {
+      gift,
+      free,
+      giftsLeft,
+      freeLeft,
+      overGift: giftsLeft == null ? 0 : Math.max(0, gift - giftsLeft),
+      overFree: freeLeft == null ? 0 : Math.max(0, free - freeLeft),
+      unknown: draw != null && (giftsLeft == null || freeLeft == null)
+    };
+  }
+  function tradeVerdict({ given, received }, fair) {
+    if (given == null || received == null || !fair || fair.freeRatio == null || fair.ignoreBelow == null) return null;
+    const impact = tradeImpact({ given, received }, fair);
+    const draw = impact ? { gift: impact.gift, free: impact.free } : null;
+    const me = verdictSide(impact?.toMe ? draw : null, fair.gifts, fair.freeGaps);
+    const them = verdictSide(impact && !impact.toMe ? draw : null, fair.theirGifts, fair.theirFreeGaps);
+    const giftCap = impact?.toMe ? fair.pair?.giftToMe : fair.pair?.giftToThem;
+    const flowCap = impact?.toMe ? fair.pair?.flowToMe : fair.pair?.flowToThem;
+    const pair = {
+      gift: impact?.gift ?? 0,
+      gap: impact?.gap ?? 0,
+      giftCap: giftCap ?? null,
+      flowCap: flowCap ?? null,
+      overGift: giftCap == null ? 0 : Math.max(0, (impact?.gift ?? 0) - giftCap),
+      overFlow: flowCap == null ? 0 : Math.max(0, (impact?.gap ?? 0) - flowCap),
+      unknown: impact != null && (giftCap == null || flowCap == null)
+    };
+    const over = me.overGift + me.overFree + them.overGift + them.overFree + pair.overGift + pair.overFlow;
+    const unknown = me.unknown || them.unknown || pair.unknown;
+    return { impact, me, them, pair, status: over > 0 ? "no" : unknown ? "unknown" : "ok" };
+  }
+  function verdictChip(label, amount, over, left, cap, explain) {
+    const tone2 = over > 0 ? CostTone.OVER : amount > 0 ? label === BAR_LABELS.gift ? CostTone.GIFT : CostTone.FREE : CostTone.NONE;
+    const text = over > 0 ? `${label} manque ${formatNumber(over)}` : cap != null ? `${label} ${formatNumber(amount)} / ${formatNumber(cap)}` : amount > 0 ? `${label} −${formatNumber(amount)}` : `${label} 0`;
+    const rest = left != null ? ` Il reste ${formatChakra(left)} sur cette barre.` : "";
+    return h("span", { class: `kp-cost kp-cost--${tone2} kp-cost--compact`, title: `${explain}${rest}` }, h("span", { class: "kp-cost__dot" }), text);
+  }
+  function verdictRow(who, title, chips) {
+    return h("div", { class: "kp-verdict__row" }, h("span", { class: "kp-verdict__who", title }, who), h("span", { class: "kp-costs" }, chips));
+  }
+  function renderVerdict(verdict, partnerName) {
+    const { me, them, pair, impact, status } = verdict;
+    const partner = partnerName ?? "lui";
+    const toMe = Boolean(impact?.toMe);
+    const sideRow = (who, side, mine) => {
+      const whose = mine ? "tes barres" : `les barres de ${partner}`;
+      const explain = side.gift || side.free ? `Cet échange est à ${mine ? "ton" : "son"} avantage : il entame ${whose} pour 48 h.` : `Cet échange n’entame pas ${whose}${impact ? "" : " (écart trop petit ou équilibré)"}.`;
+      return verdictRow(who, mine ? "Ce que l’échange retire à tes barres Dons et Écart (48 h)." : `Ce que l’échange retire aux barres Dons et Écart de ${partner} (48 h).`, [
+        verdictChip(BAR_LABELS.gift, side.gift, side.overGift, side.giftsLeft, null, explain),
+        verdictChip(BAR_LABELS.free, side.free, side.overFree, side.freeLeft, null, explain)
+      ]);
+    };
+    const pairExplain = `Ce que cet échange prendrait sur ce que le site autorise encore entre vous deux sur 48 h, dans le sens ${toMe ? `${partner} → toi` : `toi → ${partner}`} (au départ ${formatChakra(config_default.fairPlay.pairGiftCap)} de dons et ${formatChakra(config_default.fairPlay.pairFlowCap)} d’écart par sens).`;
+    const statusText4 = status === "ok" ? impact ? "✔ devrait passer" : "✔ sans effet sur les barres" : status === "no" ? "✘ le site refusera" : "? barres inconnues";
+    return h(
+      "div",
+      { class: "kp-verdict" },
+      h(
+        "div",
+        { class: "kp-verdict__head" },
+        h("span", { title: "Calcul du script d’après les prix fair-play des cartes et du chakra des deux plateaux, et les compteurs du site. Ce qui est retiré revient 48 h plus tard." }, "Fair-play"),
+        h("span", { class: `kp-verdict__status kp-verdict__status--${status}` }, statusText4)
+      ),
+      sideRow("Toi", me, true),
+      sideRow(partner, them, false),
+      verdictRow("Entre vous", pairExplain, [
+        verdictChip(BAR_LABELS.gift, pair.gift, pair.overGift, null, pair.giftCap, pairExplain),
+        verdictChip(BAR_LABELS.free, pair.gap, pair.overFlow, null, pair.flowCap, pairExplain)
+      ])
+    );
+  }
+  var trade_verdict_default = {
+    id: "trade-verdict",
+    matches: (url) => url.pathname.startsWith("/profil/"),
+    mount() {
+      let frame = 0;
+      let node = null;
+      let key = "";
+      let fair = null;
+      let fairFor = null;
+      let fairAt = 0;
+      let loading = null;
+      // read once per dialog; a dialog reopened after a while gets fresh counters (a trade may have been accepted meanwhile)
+      const loadFair = (partnerId, reopen) => {
+        if (fairFor === partnerId && (loading || fair && !(reopen && Date.now() - fairAt > config_default.tradeVerdict.refreshMs))) return;
+        fairFor = partnerId;
+        loading = loadFairPlay(partnerId).then((raw) => {
+          if (fairFor !== partnerId) return;
+          fair = receiveLeft(raw);
+          fairAt = Date.now();
+          loading = null;
+          schedule();
+        }).catch((error) => {
+          loading = null;
+          if (fairFor === partnerId) toast(`Fair-play de l’échange non lu : ${describeError(error)}`, "error");
+        });
+      };
+      const remove = () => {
+        node?.remove();
+        node = null;
+        key = "";
+      };
+      function update() {
+        const dialog = document.querySelector(TRADE_DIALOG);
+        const trays = dialog?.querySelector(TRADE_TRAYS);
+        const sections = trays ? [...trays.querySelectorAll(TRADE_TRAY)] : [];
+        if (!dialog || sections.length < 2) return remove();
+        const partnerId = profileIdFromPath();
+        if (!partnerId) return remove();
+        loadFair(partnerId, !node);
+        const mine = sections.find((section) => section.classList.contains("mine")) ?? sections[0];
+        const theirs = sections.find((section) => section !== mine);
+        const given = trayTotal(mine);
+        const received = trayTotal(theirs);
+        const verdict = tradeVerdict({ given, received }, fair);
+        if (!verdict) return remove();
+        const partnerName = partnerNameOf(dialog);
+        const nextKey = JSON.stringify([given, received, partnerName, fair]);
+        const anchor = dialog.querySelector(TRADE_SITE_VERDICT) ?? trays;
+        if (nextKey !== key || !node) {
+          const fresh = renderVerdict(verdict, partnerName);
+          if (node?.isConnected) node.replaceWith(fresh);
+          else anchor.after(fresh);
+          node = fresh;
+          key = nextKey;
+        } else if (node.previousElementSibling !== anchor) {
+          anchor.after(node);
+        }
+      }
+      const schedule = () => {
+        if (frame) return;
+        frame = requestAnimationFrame(() => {
+          frame = 0;
+          update();
+        });
+      };
+      const observer = new MutationObserver((records) => {
+        if (node && records.every((record) => node.contains(record.target))) return;
+        schedule();
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      schedule();
+      return () => {
+        observer.disconnect();
+        cancelAnimationFrame(frame);
+        fairFor = null;
+        remove();
+      };
+    }
+  };
+
   // src/features/market-offers/analysis.js
   var GIVABLE = /* @__PURE__ */ new Set([GiveStatus.AVAILABLE, GiveStatus.PINNED]);
   var OWNED = /* @__PURE__ */ new Set([GiveStatus.AVAILABLE, GiveStatus.PINNED, GiveStatus.BLOCKED]);
@@ -4653,7 +4824,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.11";
+  var SURVEY_VERSION = "2.35.12";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -8884,6 +9055,7 @@ button.kp-act__stat:hover,\r
     collection_locks_default,
     collection_select_default,
     trade_dialog_default,
+    trade_verdict_default,
     profile_collection_default,
     friends_list_default,
     // missions_series_default: retired on 05/11/2026, the site folds its claimed series list itself now (button "Voir les N séries réclamées")
@@ -9039,6 +9211,16 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-legend__item { display: inline-flex; align-items: center; gap: 4px; color: var(--kp-cost-color); font-weight: 600; }
 .kp-fair__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .kp-auto { display: flex; flex-direction: column; gap: var(--s-3); }
+.kp-verdict { display: flex; flex-direction: column; gap: 5px; margin-top: var(--s-2); padding: var(--s-2) var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); font-size: var(--t-meta); }
+.kp-verdict__head { display: flex; align-items: center; gap: var(--s-2); color: var(--fg); font-weight: 700; cursor: help; }
+.kp-verdict__status { margin-left: auto; font-weight: 700; white-space: nowrap; }
+.kp-verdict__status--ok { color: var(--ok); }
+.kp-verdict__status--no { color: var(--danger); }
+.kp-verdict__status--unknown { color: var(--mut); }
+.kp-verdict__row { display: grid; grid-template-columns: 110px minmax(0, 1fr); align-items: center; gap: var(--s-2); }
+.kp-verdict__who { overflow: hidden; color: var(--fg2); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+.kp-verdict .kp-costs { justify-content: flex-start; }
+.kp-verdict .kp-cost { cursor: help; }
 .kp-auto__section { display: flex; flex-direction: column; gap: var(--s-2); padding-top: var(--s-2); border-top: 1px solid var(--line2); }
 .kp-auto__subtitle { margin: 0; color: var(--fg); font-size: var(--t-sm); font-weight: 700; }
 .kp-auto__subtitle--log { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; }

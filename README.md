@@ -38,6 +38,11 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
 - Badge « déjà réclamée » / « à réclamer » sur chaque série (données `/api/me/progress` du site), bouton
   « Masquer les déjà réclamées », chargement automatique et discret des paquets de séries quand des filtres sont actifs.
 
+**Proposer un échange (profil d'un joueur)**
+- Bloc Fair-play sous la bande du site : ce que l'échange retirerait aux barres Dons / Écart de chacun des deux joueurs,
+  ce qu'il prend sur les limites entre vous deux, et si le site devrait l'accepter ; mis à jour à chaque carte ou chakra
+  ajouté, avant l'envoi.
+
 **Mon activité**
 - Deux onglets, Échanges (Reçus, Envoyés, Tableau) et Transactions (Ventes, Achats, Ordres), sous-catégories sous
   l'onglet actif ; « Achats » = cartes achetées et enchères gagnées (les perdues sont masquées).
