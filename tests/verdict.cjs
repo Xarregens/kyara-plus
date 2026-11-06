@@ -60,11 +60,11 @@ const dialog = `<div role="dialog" aria-modal="true" tabindex="-1" class="box wi
   const rows = (r) => r.rows.map(norm);
   const ok = !out.beforeOpen && out.initial.afterSiteBand
     && /devrait passer/.test(out.initial.status) && /--ok/.test(out.initial.status)
-    && rows(out.initial)[0] === 'Toi : Dons −254 [gift] · Écart −423 [free]' && rows(out.initial)[1] === 'ItoVeVe : Dons 0 [none] · Écart 0 [none]' && rows(out.initial)[2] === 'Entre vous : Dons 254 / 3 000 [gift] · Écart 677 / 5 000 [free]'
-    && /Il reste 9 215 ◆/.test(norm(out.initial.titles[0])) && /Il reste 15 726 ◆/.test(norm(out.initial.titles[1]))
-    && rows(out.giving)[0] === 'Toi : Dons 0 [none] · Écart 0 [none]' && rows(out.giving)[1] === 'ItoVeVe : Dons −1 800 [gift] · Écart −100 [free]' && rows(out.giving)[2] === 'Entre vous : Dons 1 800 / 3 000 [gift] · Écart 1 900 / 5 000 [free]' && /Il reste 10 000 ◆/.test(norm(out.giving.titles[2]))
-    && /refusera/.test(out.refused.status) && /--no/.test(out.refused.status) && rows(out.refused)[0] === 'Toi : Dons manque 10 585 [over] · Écart −100 [free]' && rows(out.refused)[2] === 'Entre vous : Dons manque 16 800 [over] · Écart manque 14 900 [over]'
-    && /sans effet/.test(out.balanced.status) && rows(out.balanced)[0] === 'Toi : Dons 0 [none] · Écart 0 [none]'
+    && rows(out.initial)[0] === 'Toi : Dons 9 215 → 8 961 [gift] · Écart 15 726 → 15 303 [free]' && rows(out.initial)[1] === 'ItoVeVe : Dons 10 000 [none] · Écart 20 000 [none]' && rows(out.initial)[2] === 'Entre vous : Dons 3 000 → 2 746 [gift] · Écart 5 000 → 4 323 [free]'
+    && /9 215 ◆ disponibles avant cet échange, 8 961 ◆ après \(10 000 ◆ au maximum\)/.test(norm(out.initial.titles[0])) && /15 303 ◆ après \(20 000 ◆ au maximum\)/.test(norm(out.initial.titles[1])) && /3 000 ◆ disponibles avant cet échange, 2 746 ◆ après \(3 000 ◆ au maximum\)/.test(norm(out.initial.titles[4]))
+    && rows(out.giving)[0] === 'Toi : Dons 9 215 [none] · Écart 15 726 [none]' && rows(out.giving)[1] === 'ItoVeVe : Dons 10 000 → 8 200 [gift] · Écart 20 000 → 19 900 [free]' && rows(out.giving)[2] === 'Entre vous : Dons 3 000 → 1 200 [gift] · Écart 5 000 → 3 100 [free]' && /10 000 ◆ disponibles avant cet échange, 8 200 ◆ après/.test(norm(out.giving.titles[2]))
+    && /refusera/.test(out.refused.status) && /--no/.test(out.refused.status) && rows(out.refused)[0] === 'Toi : Dons manque 10 585 [over] · Écart 15 726 → 15 626 [free]' && rows(out.refused)[2] === 'Entre vous : Dons manque 16 800 [over] · Écart manque 14 900 [over]'
+    && /sans effet/.test(out.balanced.status) && rows(out.balanced)[0] === 'Toi : Dons 9 215 [none] · Écart 15 726 [none]' && rows(out.balanced)[2] === 'Entre vous : Dons 3 000 [none] · Écart 5 000 [none]'
     && !out.afterClose && out.fairCalls === 1 && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');

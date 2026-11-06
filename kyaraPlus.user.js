@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.12
+// @version      2.35.13
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -162,6 +162,9 @@
   // Hypothesis: 3 000 of gifts and 5 000 of gap in my favour per partner. Adjust here if a survey shows other values.
   config_default.fairPlay.pairGiftCap = 3e3;
   config_default.fairPlay.pairFlowCap = 5e3;
+  // Confirmed by giveLeft / getLeft / giveBalanceLeft / getBalanceLeft of /fair-play/with (relevé du 06/11/2026).
+  // A player's own bars when full (theirReceivedLeft / theirFreeLeft of a player who traded nothing, same relevé)
+  config_default.fairPlay.barFull = { gifts: 1e4, free: 2e4 };
   // A background read (poll, scan) that disagrees with a read made right after an accept within this delay is ignored:
   // the site sometimes answers with stale counters for a given player (A → B → A flips seen in the survey).
   config_default.fairPlay.acceptReadGraceMs = 6e4;
@@ -4198,11 +4201,15 @@ Continuer ?`);
     const unknown = me.unknown || them.unknown || pair.unknown;
     return { impact, me, them, pair, status: over > 0 ? "no" : unknown ? "unknown" : "ok" };
   }
-  function verdictChip(label, amount, over, left, cap, explain) {
+  // "Dons 10 000 → 9 570" : what is left on the bar before the trade, then after it; "Dons manque 120" when it is short
+  function verdictChip(label, amount, over, left, full, explain) {
     const tone2 = over > 0 ? CostTone.OVER : amount > 0 ? label === BAR_LABELS.gift ? CostTone.GIFT : CostTone.FREE : CostTone.NONE;
-    const text = over > 0 ? `${label} manque ${formatNumber(over)}` : cap != null ? `${label} ${formatNumber(amount)} / ${formatNumber(cap)}` : amount > 0 ? `${label} −${formatNumber(amount)}` : `${label} 0`;
-    const rest = left != null ? ` Il reste ${formatChakra(left)} sur cette barre.` : "";
-    return h("span", { class: `kp-cost kp-cost--${tone2} kp-cost--compact`, title: `${explain}${rest}` }, h("span", { class: "kp-cost__dot" }), text);
+    let text;
+    if (over > 0) text = `${label} manque ${formatNumber(over)}`;
+    else if (left == null) text = amount > 0 ? `${label} −${formatNumber(amount)}` : `${label} 0`;
+    else text = amount > 0 ? `${label} ${formatNumber(left)} → ${formatNumber(left - amount)}` : `${label} ${formatNumber(left)}`;
+    const detail = left == null ? "" : amount > 0 ? ` ${label} : ${formatChakra(left)} disponibles avant cet échange, ${formatChakra(left - amount)} après${full != null ? ` (${formatChakra(full)} au maximum)` : ""}.` : ` ${label} : ${formatChakra(left)} disponibles, inchangé${full != null ? ` (${formatChakra(full)} au maximum)` : ""}.`;
+    return h("span", { class: `kp-cost kp-cost--${tone2} kp-cost--compact`, title: `${explain}${detail}` }, h("span", { class: "kp-cost__dot" }), text);
   }
   function verdictRow(who, title, chips) {
     return h("div", { class: "kp-verdict__row" }, h("span", { class: "kp-verdict__who", title }, who), h("span", { class: "kp-costs" }, chips));
@@ -4215,11 +4222,11 @@ Continuer ?`);
       const whose = mine ? "tes barres" : `les barres de ${partner}`;
       const explain = side.gift || side.free ? `Cet échange est à ${mine ? "ton" : "son"} avantage : il entame ${whose} pour 48 h.` : `Cet échange n’entame pas ${whose}${impact ? "" : " (écart trop petit ou équilibré)"}.`;
       return verdictRow(who, mine ? "Ce que l’échange retire à tes barres Dons et Écart (48 h)." : `Ce que l’échange retire aux barres Dons et Écart de ${partner} (48 h).`, [
-        verdictChip(BAR_LABELS.gift, side.gift, side.overGift, side.giftsLeft, null, explain),
-        verdictChip(BAR_LABELS.free, side.free, side.overFree, side.freeLeft, null, explain)
+        verdictChip(BAR_LABELS.gift, side.gift, side.overGift, side.giftsLeft, config_default.fairPlay.barFull.gifts, explain),
+        verdictChip(BAR_LABELS.free, side.free, side.overFree, side.freeLeft, config_default.fairPlay.barFull.free, explain)
       ]);
     };
-    const pairExplain = `Ce que cet échange prendrait sur ce que le site autorise encore entre vous deux sur 48 h, dans le sens ${toMe ? `${partner} → toi` : `toi → ${partner}`} (au départ ${formatChakra(config_default.fairPlay.pairGiftCap)} de dons et ${formatChakra(config_default.fairPlay.pairFlowCap)} d’écart par sens).`;
+    const pairExplain = `Limite entre vous deux seulement, sur 48 h, dans le sens ${toMe ? `${partner} → toi` : `toi → ${partner}`} : ce que le site autorise encore avant cet échange, puis après.`;
     const statusText4 = status === "ok" ? impact ? "✔ devrait passer" : "✔ sans effet sur les barres" : status === "no" ? "✘ le site refusera" : "? barres inconnues";
     return h(
       "div",
@@ -4233,8 +4240,8 @@ Continuer ?`);
       sideRow("Toi", me, true),
       sideRow(partner, them, false),
       verdictRow("Entre vous", pairExplain, [
-        verdictChip(BAR_LABELS.gift, pair.gift, pair.overGift, null, pair.giftCap, pairExplain),
-        verdictChip(BAR_LABELS.free, pair.gap, pair.overFlow, null, pair.flowCap, pairExplain)
+        verdictChip(BAR_LABELS.gift, pair.gift, pair.overGift, pair.giftCap, config_default.fairPlay.pairGiftCap, pairExplain),
+        verdictChip(BAR_LABELS.free, pair.gap, pair.overFlow, pair.flowCap, config_default.fairPlay.pairFlowCap, pairExplain)
       ])
     );
   }
@@ -4824,7 +4831,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.12";
+  var SURVEY_VERSION = "2.35.13";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

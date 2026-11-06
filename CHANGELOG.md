@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.13
+- Bloc Fair-play de « Proposer un échange » : chaque pastille montre ce qui reste sur la barre avant puis après
+  l'échange (« Dons 10 000 → 9 570 »), pour les barres de chaque joueur comme pour la limite entre vous deux
+  (« Dons 3 000 → 2 570 », la même valeur que la phrase du site). Infobulle avec le maximum de chaque barre.
+
 ## 2.35.12
 - Fenêtre « Proposer un échange » : sous la bande du site, un bloc Fair-play indique, avant l'envoi et à chaque carte ou
   chakra ajouté, ce que l'échange retirerait aux barres Dons / Écart de chacun des deux joueurs (pastilles orange / bleue,
