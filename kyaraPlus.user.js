@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.17
+// @version      2.35.18
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4865,7 +4865,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.17";
+  var SURVEY_VERSION = "2.35.18";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6424,9 +6424,12 @@ Continuer ?`);
   // Relevé « séries » : capture, sur les pages Missions et Collection, ce que le site renvoie (réponses /api) et affiche
   // (section des séries finies, liste des albums), pour construire ensuite une mémoire des récompenses déjà réclamées.
   // Console : kyaraPlusSeries.download()
-  var SERIES_SURVEY_PAGES = /* @__PURE__ */ new Set(["/missions", "/collection"]);
-  var SERIES_SURVEY_MAX_ENTRIES = 60;
+  var SERIES_SURVEY_PAGES = /* @__PURE__ */ new Set(["/missions", "/collection", "/marche"]);
+  // on the market page only the answers Mon activité is built from are kept, whole (a history page is large)
+  var SERIES_SURVEY_MARKET_PATHS = /^\/api\/(me\/market\/history|me\/market|me\/trades|trades\/offers\/mine)(\?|$)/;
+  var SERIES_SURVEY_MAX_ENTRIES = 80;
   var SERIES_SURVEY_MAX_BODY = 6e4;
+  var SERIES_SURVEY_MAX_MARKET_BODY = 4e5;
   var SERIES_SURVEY_MAX_HTML = 12e4;
   var seriesSurveyLog = [];
   var seriesSurveyWatching = () => SERIES_SURVEY_PAGES.has(location.pathname);
@@ -6446,6 +6449,7 @@ Continuer ?`);
       const parsed = new URL(url, location.origin);
       if (parsed.origin !== location.origin || !parsed.pathname.startsWith("/api/")) return;
       path = parsed.pathname + parsed.search;
+      if (location.pathname === "/marche" && !SERIES_SURVEY_MARKET_PATHS.test(path)) return;
     } catch {
       return;
     }
@@ -6456,7 +6460,8 @@ Continuer ?`);
       body = seriesSurveyMask(body);
     }
     const json = JSON.stringify(body);
-    seriesSurveyLog.push({ at: Date.now(), page: location.pathname + location.search, kind, path, status, truncated: json.length > SERIES_SURVEY_MAX_BODY, body: json.length > SERIES_SURVEY_MAX_BODY ? json.slice(0, SERIES_SURVEY_MAX_BODY) : body });
+    const maxBody = location.pathname === "/marche" ? SERIES_SURVEY_MAX_MARKET_BODY : SERIES_SURVEY_MAX_BODY;
+    seriesSurveyLog.push({ at: Date.now(), page: location.pathname + location.search, kind, path, status, truncated: json.length > maxBody, body: json.length > maxBody ? json.slice(0, maxBody) : body });
     if (seriesSurveyLog.length > SERIES_SURVEY_MAX_ENTRIES) seriesSurveyLog.splice(0, seriesSurveyLog.length - SERIES_SURVEY_MAX_ENTRIES);
   }
   var isBootstrapUrl = (url) => {
