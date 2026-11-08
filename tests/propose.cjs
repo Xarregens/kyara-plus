@@ -18,7 +18,7 @@ const boards = {
   // the site's window as a <dialog> element, or as a plain <div> with no dialog markup, both inside its header
   nativeDialog: '<section class="board"><div class="bh"><input class="search" placeholder="Chercher"><button class="btn-acc" onclick="openNative(this)">Proposer une carte</button></div><ul class="offers"><li>offre</li></ul></section>',
   // the site's redesigned board (08/11/2026): "Proposer une carte" in .filters .line, the window opened at the end of the page
-  redesigned: '<section class="board" aria-label="Offres d’échange"><div class="filters"><div class="line"><div class="sbox"><input type="search" class="search"></div><button class="btn btn-acc btn-sm prop" type="button" onclick="openPortal()">Proposer une carte</button></div></div><ul class="offers"><li class="offer"><div class="acts"><button class="btn btn-ghost btn-sm">Proposer autre chose</button></div></li></ul></section>',
+  redesigned: '<section class="board" aria-label="Offres d’échange"><div class="filters"><div class="line"><div class="sbox"><input type="search" class="search"></div><button class="btn btn-acc btn-sm prop" type="button" onclick="openPopover(this)">Proposer une carte</button></div></div><ul class="offers"><li class="offer"><div class="acts"><button class="btn btn-ghost btn-sm">Proposer autre chose</button></div></li></ul></section>',
   plainModal: '<section class="board"><div class="bh"><input class="search" placeholder="Chercher"><button class="btn-acc" onclick="openPlain(this)">Proposer une carte</button></div><ul class="offers"><li>offre</li></ul></section>',
 };
 let boardHtml = boards.known;
@@ -55,6 +55,14 @@ let boardHtml = boards.known;
     localStorage.setItem('kyara_token', 'fake'); localStorage.setItem('kyara_device', 'dev');
     window.openNative = (button) => { const d = document.createElement('dialog'); d.className = 'site-dialog'; d.textContent = 'Proposer une offre'; button.parentElement.append(d); d.showModal(); };
     window.openPlain = (button) => { const d = document.createElement('div'); d.className = 'site-dialog modal'; d.style.cssText = 'position:fixed;inset:20%;background:#222;color:#fff'; d.innerHTML = '<p>Proposer une offre</p><button class="close" onclick="this.parentElement.remove()">Fermer</button>'; button.parentElement.append(d); };
+    // the site's popover: opened next to its button, closed by any click outside it (the user's click on our button
+    // reaches the document after the script's synthetic click, and closed it before 2.35.34)
+    window.openPopover = (button) => {
+      const d = document.createElement('div'); d.className = 'site-dialog pop'; d.style.cssText = 'position:fixed;inset:25%;z-index:50;background:#222;color:#fff'; d.textContent = 'Proposer une offre';
+      button.parentElement.append(d);
+      const closeOutside = (event) => { if (!d.contains(event.target) && event.target !== button) { d.remove(); document.removeEventListener('click', closeOutside); } };
+      document.addEventListener('click', closeOutside);
+    };
     window.openPortal = () => { const d = document.createElement('div'); d.className = 'site-dialog portal'; d.style.cssText = 'position:fixed;inset:25%;z-index:50;background:#222;color:#fff'; d.textContent = 'Proposer une offre'; document.body.append(d); };
     window.openDialog = (button) => { const d = document.createElement('div'); d.setAttribute('role', 'dialog'); d.className = 'site-dialog'; d.textContent = 'Proposer une offre'; button.closest('section.board').append(d); };
   });

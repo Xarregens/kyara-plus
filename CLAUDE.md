@@ -64,6 +64,8 @@ offres du site (bouton « Proposer »), `probe()` la pagination des offres du ta
 - Tableau des offres du site redessiné (relevé du 08/11/2026) : `section.board[aria-label="Offres d’échange"]`,
   `.filters .line button.prop` « Proposer une carte », `.pills` de filtres, `ul.offers > li.offer` avec `.acts` (« Donner X »,
   « Proposer autre chose »). Le script masque ce tableau et clique son bouton ; voir `createProposeOpener`.
+- Un `.click()` lancé depuis le clic de l'utilisateur sur un bouton du script : la suite de ce clic atteint ensuite le
+  document, et le site y voit un clic « à côté » qui referme ce qu'il vient d'ouvrir. Différer (`setTimeout(…, 0)`).
 - `/collection` sert les deux vues (Cartes et Albums) sur la même URL : une feature « albums » tourne aussi en vue Cartes.
 
 ## Goûts du propriétaire

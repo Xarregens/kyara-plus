@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.33
+// @version      2.35.34
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -5125,7 +5125,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.33";
+  var SURVEY_VERSION = "2.35.34";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6609,16 +6609,25 @@ Continuer ?`);
         for (const record of records) for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) added.push(node);
       });
       recorder.observe(document.body, { childList: true, subtree: true });
-      button.click();
+      // Clicked once the user's click on our button has finished its way through the page: the site closes its window
+      // on any click outside it, and that click (on our button) would otherwise close it right after it opened.
+      setTimeout(() => button.click(), 0);
       setTimeout(() => {
         recorder.disconnect();
+        const ours = (node) => node.closest(".kp-board, .kp-side, .kp-act, .kp-toasts, aside.chat-side, header");
+        const gone = added.filter((node) => !node.isConnected).length;
         // what the site added: outermost nodes only, never the script's own blocks, the chat or the header
-        const fresh = added.filter((node) => node.isConnected && !node.closest(".kp-board, .kp-side, .kp-act, .kp-toasts, aside.chat-side, header") && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
+        const fresh = added.filter((node) => node.isConnected && !ours(node) && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
         const inBoard = fresh.filter((node) => boardNode?.contains(node));
         const elsewhere = fresh.filter((node) => !boardNode?.contains(node));
         const modal = [...document.querySelectorAll(SITE_MODAL)].find((node) => !modalsBefore.has(node));
         const outcome = modal ? "fenêtre" : inBoard.length ? "ajout dans le tableau" : elsewhere.length ? "ajout ailleurs" : "rien";
-        lastProposeAttempt = { at: new Date().toISOString(), bouton: describeNode(button), resultat: outcome, fenetre: modal ? describeNode(modal) : null, dansTableau: inBoard.slice(0, 8).map(describeNode), ailleurs: elsewhere.slice(0, 8).map(describeNode) };
+        const where = (node) => {
+          const style = getComputedStyle(node);
+          const box = node.getBoundingClientRect();
+          return `${describeNode(node)} [${style.position}, ${Math.round(box.width)}×${Math.round(box.height)}]`;
+        };
+        lastProposeAttempt = { at: new Date().toISOString(), bouton: describeNode(button), resultat: outcome, fenetre: modal ? where(modal) : null, dansTableau: inBoard.slice(0, 8).map(where), ailleurs: elsewhere.slice(0, 8).map(where), ajoutesPuisRetires: gone };
         // a dialog inside the site's board: its surroundings (search, buttons of the header…) stay hidden
         if (modal) return boardNode?.contains(modal) && modal.parentElement !== boardNode ? flag(modal, boardNode) : void 0;
         if (inBoard.length) return flag(inBoard[0], boardNode);
