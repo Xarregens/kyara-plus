@@ -4,6 +4,10 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.30
+- Fenêtre « Proposer un échange » ouverte depuis « Voir sa collection » d'un message privé (adresse `/amis/<id>/collection`) :
+  elle a maintenant les mêmes filtres et le même bloc Fair-play que depuis le profil du joueur.
+
 ## 2.35.29
 - Mon activité : après un F5, ou en revenant par l'onglet « Mon activité » du site, la sous-catégorie ouverte en
   dernier (par exemple Échanges → Envoyés) est rouverte, au lieu de Transactions → Ventes.

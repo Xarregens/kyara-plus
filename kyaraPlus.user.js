@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.29
+// @version      2.35.30
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -481,7 +481,10 @@
   }
 
   // src/lib/site.js
-  var profileIdFromPath = () => location.pathname.match(/^\/profil\/([^/]+)/)?.[1];
+  // a player's page: /profil/<id>, or /amis/<id>/collection (reached from a private message, with the same trade dialog)
+  var PLAYER_PATH = /^\/(?:profil|amis)\/([^/]+)/;
+  var profileIdFromPath = () => location.pathname.match(PLAYER_PATH)?.[1];
+  var isPlayerPage = (url) => PLAYER_PATH.test(url.pathname) && url.pathname !== "/amis";
   var cardIdFromLink = (link2) => Number(link2?.getAttribute("href")?.match(/\/wiki\/(\d+)/)?.[1]);
   var cardImageUrl = (cardId) => `/cards/sm/${cardId}.webp`;
   var packIdFromPath = () => location.pathname.match(/^\/ouvrir\/([^/]+)/)?.[1];
@@ -4264,7 +4267,7 @@ Continuer ?`);
   var isTheirTabSelected = (shelf) => [...shelf.querySelectorAll('.tabs [role="tab"]')].findIndex((tab) => tab.getAttribute("aria-selected") === "true") === 1;
   var trade_dialog_default = {
     id: "trade-dialog",
-    matches: (url) => url.pathname.startsWith("/profil/"),
+    matches: isPlayerPage,
     mount() {
       let collection = null;
       let catalog = null;
@@ -4528,7 +4531,7 @@ Continuer ?`);
   }
   var trade_verdict_default = {
     id: "trade-verdict",
-    matches: (url) => url.pathname.startsWith("/profil/"),
+    matches: isPlayerPage,
     mount() {
       let frame = 0;
       let node = null;
@@ -5120,7 +5123,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.29";
+  var SURVEY_VERSION = "2.35.30";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

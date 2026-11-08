@@ -26,8 +26,9 @@ const dialog = `<div role="dialog" aria-label="Proposer un échange à ItoVeVe">
     if (p === '/api/me/collection') return json(collection);
     if (p === '/api/me/collection/prices') { await new Promise((r) => setTimeout(r, 1500)); return json(url.searchParams.get('ids').split(',').map((id) => ({ characterId: Number(id), median7d: 10 }))); }
     if (p === `/api/trades/available/${PARTNER}`) { await new Promise((r) => setTimeout(r, 2000)); return json(theirCounts); }
+    if (p.startsWith('/api/fair-play/with/')) return json({ enabled: true, freeRatio: 2, ignoreBelow: 100, receivedDays: 2, pairDays: 2, giveLeft: 3000, getLeft: 3000, giveBalanceLeft: 5000, getBalanceLeft: 5000, myReceivedLeft: 9000, theirReceivedLeft: 10000, myFreeLeft: 15000, theirFreeLeft: 20000 });
     if (p.startsWith('/api/')) return json({});
-    if (p === `/profil/${PARTNER}`) return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><main><h1>ItoVeVe</h1></main></body></html>` });
+    if (p === `/profil/${PARTNER}` || p === `/amis/${PARTNER}/collection`) return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html><html><body><main><h1>ItoVeVe</h1></main></body></html>` });
     return route.fulfill({ status: 404, body: '' });
   });
   await page.addInitScript(() => { localStorage.setItem('kyara_token', 'fake'); });
@@ -62,12 +63,20 @@ const dialog = `<div role="dialog" aria-label="Proposer un échange à ItoVeVe">
   await page.evaluate(() => { const tabs = document.querySelectorAll('[role="tab"]'); tabs[1].setAttribute('aria-selected', 'false'); tabs[0].setAttribute('aria-selected', 'true'); });
   await page.waitForTimeout(300);
   out.mineTab = await read();
+  // the same dialog opened from a private message (/amis/<id>/collection) gets the same filters and the fair-play block
+  await page.goto(`https://kyara.games/amis/${PARTNER}/collection`);
+  await page.addScriptTag({ content: script });
+  await page.waitForTimeout(300);
+  await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), dialog.replace('<div class="trays"></div>', '<div class="trays"><section class="tray mine"><header><h3>Tu donnes</h3> <span class="total mono">≈ 400 ◆</span></header><ul class="slots"></ul></section><section class="tray"><header><h3>Tu reçois</h3> <span class="total mono">≈ 100 ◆</span></header><ul class="slots"></ul></section></div><div class="verdict"></div>'));
+  await page.waitForSelector('.kp-dialog-chips', { timeout: 5000 }).catch(() => {});
+  out.fromFriends = await page.evaluate(() => ({ chips: document.querySelectorAll('.kp-dialog-chips').length, verdict: Boolean(document.querySelector('.kp-verdict')) }));
   out.errors = errors;
   const ok = out.initial.ourRows === 1 && out.initial.ourChips.join() === 'Ses doubles,Il me manque' && out.initial.siteRowHidden && out.initial.visible === '1,2,3,4,5,6'
     && out.afterRedraw.ourRows === 1 && out.afterRedraw.ourChips.join() === 'Ses doubles,Il me manque' && out.afterRedraw.siteRowHidden
     && out.iLackFast.visible === '3,4,5,6'
     && out.theirDoubles.visible === '1,3,5' && out.countsBeforePrices
-    && out.mineTab.ourRows === 1 && out.mineTab.ourChips.join() === 'Mes doubles,Il lui manque' && errors.length === 0;
+    && out.mineTab.ourRows === 1 && out.mineTab.ourChips.join() === 'Mes doubles,Il lui manque'
+    && out.fromFriends.chips === 1 && out.fromFriends.verdict && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();
