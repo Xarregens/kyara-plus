@@ -22,6 +22,7 @@ const boards = {
   plainModal: '<section class="board"><div class="bh"><input class="search" placeholder="Chercher"><button class="btn-acc" onclick="openPlain(this)">Proposer une carte</button></div><ul class="offers"><li>offre</li></ul></section>',
 };
 let boardHtml = boards.known;
+let quickClose = false;
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
@@ -73,17 +74,21 @@ let boardHtml = boards.known;
     await page.addScriptTag({ content: script });
     await page.waitForSelector('.kp-board', { timeout: 15000 });
     await page.click('.kp-board__actions .kp-btn:has-text("Proposer une carte")');
-    await page.waitForTimeout(1600);
-    return page.evaluate(() => {
+    await page.waitForTimeout(250);
+    const early = await page.evaluate(() => { const d = document.querySelector('.site-dialog'); return Boolean(d && d.getBoundingClientRect().height > 0); });
+    if (quickClose) await page.evaluate(() => document.querySelector('.site-dialog')?.remove());
+    await page.waitForTimeout(1350);
+    return page.evaluate((early) => {
       const dialog = document.querySelector('.site-dialog');
       return {
         dialogVisible: Boolean(dialog && dialog.getBoundingClientRect().height > 0),
         revealed: document.body.classList.contains('kp-offers--site'),
         siteBoardVisible: [...document.querySelectorAll('main section.board :is(button.btn-acc, input.search, ul.offers)')].some((n) => n.getBoundingClientRect().height > 0),
         backButton: Boolean(document.querySelector('.kp-back-to-kp')),
+        early,
         toast: [...document.querySelectorAll('.kp-toast')].map((t) => t.textContent).find((t) => /Proposer/.test(t)) ?? '',
       };
-    });
+    }, early);
   };
   out.known = await run('known');
   out.renamed = await run('renamed');
@@ -92,6 +97,16 @@ let boardHtml = boards.known;
   out.afterBack = await page.evaluate(() => ({ revealed: document.body.classList.contains('kp-offers--site'), backButton: Boolean(document.querySelector('.kp-back-to-kp')) }));
   out.nativeDialog = await run('nativeDialog');
   out.redesigned = await run('redesigned');
+  // opened then closed within a quarter of a second: still counted as opened, no switch to the site's board
+  quickClose = true;
+  out.quickClose = await run('redesigned');
+  quickClose = false;
+  // a dead button while the site adds offers to its live list: still detected as "nothing opened"
+  boardHtml = boards.dead.replace('</section>', '<ul class="offers"></ul></section>');
+  await page.goto('https://kyara.games/marche?onglet=offres'); await page.addScriptTag({ content: script }); await page.waitForSelector('.kp-board');
+  await page.evaluate(() => setInterval(() => { const li = document.createElement('li'); li.textContent = 'offre'; document.querySelector('ul.offers')?.append(li); }, 100));
+  await page.click('.kp-board__actions .kp-btn:has-text("Proposer une carte")'); await page.waitForTimeout(1600);
+  out.deadWithLiveList = await page.evaluate(() => document.body.classList.contains('kp-offers--site'));
   out.plainModal = await run('plainModal');
   await page.click('.site-dialog .close'); await page.waitForTimeout(300);
   out.afterClose = await page.evaluate(() => ({ flags: document.querySelectorAll('.kp-site-modal, .kp-site-modal-path').length, siteBoardVisible: [...document.querySelectorAll('main section.board :is(button.btn-acc, input.search, ul.offers)')].some((n) => n.getBoundingClientRect().height > 0) }));
@@ -108,9 +123,10 @@ let boardHtml = boards.known;
     && !out.afterBack.revealed && !out.afterBack.backButton
     && out.nativeDialog.dialogVisible && !out.nativeDialog.revealed && !out.nativeDialog.siteBoardVisible
     && out.plainModal.dialogVisible && !out.plainModal.revealed && !out.plainModal.siteBoardVisible
-    && /button\.btn\.btn-acc\.btn-sm\.prop "Proposer une carte"/.test(out.redesignedFound) && out.redesigned.dialogVisible && !out.redesigned.revealed && !out.redesigned.siteBoardVisible && !out.redesigned.backButton
+    && /button\.btn\.btn-acc\.btn-sm\.prop "Proposer une carte"/.test(out.redesignedFound) && out.redesigned.early && !out.quickClose.revealed && !out.quickClose.backButton && out.deadWithLiveList
+    && out.redesigned.dialogVisible && !out.redesigned.revealed && !out.redesigned.siteBoardVisible && !out.redesigned.backButton
     && out.afterClose.flags === 0 && !out.afterClose.siteBoardVisible
-    && /^kyara-board-.*\.json$/.test(out.boardFile.name) && /button\.btn-acc/.test(out.boardFile.trouve) && out.boardFile.essai === 'rien' && out.boardFile.corps > 0 && out.boardFile.html > 0 && errors.length === 0;
+    && /^kyara-board-.*\.json$/.test(out.boardFile.name) && /button\.btn-acc/.test(out.boardFile.trouve) && ['rien', 'ouvert'].includes(out.boardFile.essai) && out.boardFile.corps > 0 && out.boardFile.html > 0 && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

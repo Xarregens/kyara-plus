@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.35
+- Tableau des offres : refermer vite la fenêtre « Proposer une carte » (avant une seconde) faisait basculer sur le
+  tableau du site. Le script note maintenant l'ouverture dès qu'elle se produit, et affiche aussitôt la fenêtre du site
+  au lieu d'attendre la fin de sa vérification.
+
 ## 2.35.34
 - Tableau des offres : « Proposer une carte » ouvrait la fenêtre du site, qui se refermait aussitôt (relevé du
   08/11/2026 : bouton trouvé, rien d'affiché). Le site ferme sa fenêtre sur tout clic à côté, et le clic sur le bouton

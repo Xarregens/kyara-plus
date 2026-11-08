@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.34
+// @version      2.35.35
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -5125,7 +5125,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.34";
+  var SURVEY_VERSION = "2.35.35";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6603,10 +6603,27 @@ Continuer ?`);
       if (!button) return reveal("Bouton « Proposer » du site introuvable.");
       const boardNode = document.querySelector(NATIVE_BOARD);
       const modalsBefore = new Set(document.querySelectorAll(SITE_MODAL));
-      const added = [];
-      // the whole page is watched: the site may open its window outside its board (at the end of the page, for instance)
+      const ours = (node) => node.closest(".kp-board, .kp-side, .kp-act, .kp-toasts, .kp-back-to-kp, aside.chat-side, header");
+      const where = (node) => {
+        const style = getComputedStyle(node);
+        const box = node.getBoundingClientRect();
+        return `${describeNode(node)} [${style.position}, ${Math.round(box.width)}×${Math.round(box.height)}]`;
+      };
+      // What the site opens is noted (and shown) the moment it appears, not only at the end of the check: a window
+      // already closed again by then still counts as opened. The site's list of offers is not a window (refreshed live).
+      const seen = [];
+      const take = (node) => {
+        if (node.nodeType !== Node.ELEMENT_NODE || !node.isConnected || ours(node)) return;
+        const isModal = node.matches(SITE_MODAL) && !modalsBefore.has(node) || node.querySelector?.(SITE_MODAL);
+        if (!isModal && node.closest("ul, ol")) return;
+        seen.push(where(node));
+        if (!boardNode?.contains(node)) return;
+        const target = node.matches(SITE_MODAL) ? node : node.querySelector?.(SITE_MODAL) ?? node;
+        if (flagged?.isConnected && flagged.contains(target)) return;
+        if (target.parentElement !== boardNode || !target.matches(SITE_MODAL)) flag(target, boardNode);
+      };
       const recorder = new MutationObserver((records) => {
-        for (const record of records) for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) added.push(node);
+        for (const record of records) for (const node of record.addedNodes) take(node);
       });
       recorder.observe(document.body, { childList: true, subtree: true });
       // Clicked once the user's click on our button has finished its way through the page: the site closes its window
@@ -6614,25 +6631,8 @@ Continuer ?`);
       setTimeout(() => button.click(), 0);
       setTimeout(() => {
         recorder.disconnect();
-        const ours = (node) => node.closest(".kp-board, .kp-side, .kp-act, .kp-toasts, aside.chat-side, header");
-        const gone = added.filter((node) => !node.isConnected).length;
-        // what the site added: outermost nodes only, never the script's own blocks, the chat or the header
-        const fresh = added.filter((node) => node.isConnected && !ours(node) && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
-        const inBoard = fresh.filter((node) => boardNode?.contains(node));
-        const elsewhere = fresh.filter((node) => !boardNode?.contains(node));
-        const modal = [...document.querySelectorAll(SITE_MODAL)].find((node) => !modalsBefore.has(node));
-        const outcome = modal ? "fenêtre" : inBoard.length ? "ajout dans le tableau" : elsewhere.length ? "ajout ailleurs" : "rien";
-        const where = (node) => {
-          const style = getComputedStyle(node);
-          const box = node.getBoundingClientRect();
-          return `${describeNode(node)} [${style.position}, ${Math.round(box.width)}×${Math.round(box.height)}]`;
-        };
-        lastProposeAttempt = { at: new Date().toISOString(), bouton: describeNode(button), resultat: outcome, fenetre: modal ? where(modal) : null, dansTableau: inBoard.slice(0, 8).map(where), ailleurs: elsewhere.slice(0, 8).map(where), ajoutesPuisRetires: gone };
-        // a dialog inside the site's board: its surroundings (search, buttons of the header…) stay hidden
-        if (modal) return boardNode?.contains(modal) && modal.parentElement !== boardNode ? flag(modal, boardNode) : void 0;
-        if (inBoard.length) return flag(inBoard[0], boardNode);
-        // something appeared elsewhere in the page: it is not hidden by the script, nothing to do
-        if (elsewhere.length) return;
+        lastProposeAttempt = { at: new Date().toISOString(), bouton: describeNode(button), resultat: seen.length ? "ouvert" : "rien", apparu: seen.slice(0, 8), toujoursOuvert: Boolean(flagged?.isConnected) };
+        if (seen.length) return;
         reveal("La fenêtre de proposition ne s’est pas ouverte.");
       }, config_default.offers.proposeCheckMs);
     }
