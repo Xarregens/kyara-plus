@@ -4,6 +4,13 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.29
+- Mon activité : après un F5, ou en revenant par l'onglet « Mon activité » du site, la sous-catégorie ouverte en
+  dernier (par exemple Échanges → Envoyés) est rouverte, au lieu de Transactions → Ventes.
+- Auto-accept : la règle « Ou si gain ≥ » passe devant « Seulement mes doublons » et « Seulement les cartes qu'il me
+  manque » : un gain qui l'atteint est pris même avec le dernier exemplaire ou pour une carte déjà possédée. Les deux
+  cases continuent de limiter les règles par rareté.
+
 ## 2.35.28
 - Mon activité se met à jour dès que le site apprend quelque chose (échange reçu, offre prise…) : le script réagit
   aux lectures du site et aux changements de son panneau, sans attendre le rafraîchissement de la minute.

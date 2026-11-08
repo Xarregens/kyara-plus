@@ -23,12 +23,13 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `discuss.cjs` | Mon activité (Échanges) | Discussion dans la ligne : « Discuter (N) », messages lus, envoi (Entrée), compteur mis à jour, fermeture. |
 | `wake.cjs` | Mon activité | Rafraîchissement immédiat quand le site relit ses échanges ou redessine son panneau ; pas de boucle sur les propres requêtes du script. |
 | `dialogchips.cjs` | Proposer un échange | Filtres du script dans leur rangée (jamais en double), « Il me manque » immédiat, « Ses doubles » dès les exemplaires connus, demandés en priorité ; changement d'onglet. |
+| `subkeep.cjs` | Mon activité | Sous-catégorie rouverte après rechargement (mémorisée), adresse du site suivie sans mémoire. |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |
 | `loadtime_run.cjs` | Mon activité | Temps jusqu'au premier affichage et aux premières lignes, chronologie des requêtes. |
 | `tree.cjs` | Mon activité | Onglets centrés, cadre des sous-catégories et sa pointe. |
 | `held.cjs` | En-tête du site | Badge « +N » du chakra bloqué, mise à jour par les réponses bootstrap, réattachement. |
 | `autopanel.cjs` | Auto-accept | Lignes par rareté, pastilles, tout / rien, gain global, doublons, seuil par ligne. |
-| `autofair.cjs` | Auto-accept | Carte la plus rentable qui passe le fair-play (pas la plus rentable tout court), retentative avec la carte suivante après un refus du site, offre impossible jamais tentée. |
+| `autofair.cjs` | Auto-accept | Carte la plus rentable qui passe le fair-play (pas la plus rentable tout court), retentative avec la carte suivante après un refus du site, offre impossible jamais tentée ; « Ou si gain ≥ » prend le dernier exemplaire et une carte déjà possédée. |
 | `autolog.cjs` | Auto-accept | Gain estimé sur chaque ligne « Acceptés », total depuis l'activation (détail par rareté en infobulle), mémorisé au rechargement, remis à zéro par « Activer ». |
 | `claims2.cjs` | Collection (albums) | Badges « déjà réclamée » / « à réclamer », bouton « Masquer les déjà réclamées ». |
 | `autoexpand3.cjs` | Collection (albums) | Chargement automatique des paquets quand des filtres sont actifs, sans clignotement. |

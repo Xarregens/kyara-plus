@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.28
+// @version      2.35.29
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -2976,6 +2976,7 @@ Continuer ?`);
     }
     // Opening a tab shows its first sub-category (Reçus, Ventes); a sub-category loads its own history when shown.
     function setSub(sub) {
+      writeSetting("activitySub", sub);
       patchView({ category: groupOf(sub), sub, shown: config_default.activity.renderStep });
       publishHistory();
       // before load() has the catalog, the tab chosen from the URL is only remembered; load() starts its history itself
@@ -4135,7 +4136,9 @@ Continuer ?`);
         if (!store.get().view.native) controller.focusTrade(tradeId, { talk: params.get("discussion") === "1" });
       };
       const urlTimer = setInterval(watchUrl, URL_WATCH_MS);
-      controller.setSub(FIRST_CATEGORY[new URLSearchParams(location.search).get("onglet")]);
+      // the sub-category last opened comes back (F5, or the site's "Mon activité" tab); the site's own onglet only otherwise
+      const remembered = readSetting("activitySub", null);
+      controller.setSub(CATEGORIES.some((category) => category.id === remembered) ? remembered : FIRST_CATEGORY[new URLSearchParams(location.search).get("onglet")]);
       panel.render(store.get());
       controller.load().then(watchUrl);
       const stopPolling = startPolling(
@@ -4732,7 +4735,7 @@ Continuer ?`);
   // no filter. refused(cardId): cards the site already refused for this offer (retried with the next one).
   function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {} }, fair = null, refused = () => false) {
     // "only the cards I lack": an offer of a card I already own is never taken on its own
-    if (missingOnly && analysis.owned > 0) return null;
+    // "Ou si gain ≥": a gain reaching it is taken whatever the rarity, even with my last copy or a card I already own
     // a rarity rule also needs the row's minimum gain when one is set (an Epic can be worth more than a Legendary); unknown price = no
     // same rarity (E for E): only with a known gain reaching the row's floor, or at least 0 when the row has none
     const rowGainOk = (option) => {
@@ -4740,11 +4743,13 @@ Continuer ?`);
       const floor = rowMinGain[option.card.rarity] ?? (same ? 0 : null);
       return floor == null || option.gain != null && option.gain >= floor;
     };
-    const ruleMatches = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) || minGain != null && option.gain != null && option.gain >= minGain;
+    const gainRule = (option) => minGain != null && option.gain != null && option.gain >= minGain;
+    const rarityRule = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) && (!missingOnly || analysis.owned === 0) && (!doublesOnly || isDouble(option));
     const passes = (option) => !refused(option.card.id) && (!fair || passesFairPlay(analysis, option, fair));
-    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && ruleMatches(option) && passes(option);
+    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && (gainRule(option) || rarityRule(option)) && passes(option);
+    // a double is preferred when several cards qualify
     const double = bestOption(analysis.options, (option) => matches2(option) && isDouble(option));
-    return double ?? (doublesOnly ? null : bestOption(analysis.options, matches2));
+    return double ?? bestOption(analysis.options, matches2);
   }
   var hasAutoRule = ({ rules, minGain }) => rules.size > 0 || minGain != null;
   function autoAcceptCandidates(analyses, settings, fair = null, refused = () => false) {
@@ -5115,7 +5120,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.28";
+  var SURVEY_VERSION = "2.35.29";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6031,7 +6036,8 @@ Continuer ?`);
     if (byGive.length) parts.push(`par rareté : ${byGive.join(" ; ")}`);
     if (auto.gainEnabled) parts.push(`tout échange dont le gain est d’au moins ${formatChakra(auto.minGain)}`);
     if (!parts.length) return "Rien n’est coché : l’auto-accept n’acceptera rien.";
-    return `Acceptera tout seul ${parts.join(", et ")}${auto.doublesOnly ? ", seulement avec mes doublons" : ", même mon dernier exemplaire"}${auto.missingOnly ? ", seulement les cartes qu’il me manque" : ""}.`;
+    const limits = [auto.doublesOnly ? "seulement avec mes doublons" : "même mon dernier exemplaire", auto.missingOnly ? "seulement les cartes qu’il me manque" : null].filter(Boolean);
+    return `Acceptera tout seul ${parts.join(", et ")}, ${limits.join(", ")}${auto.gainEnabled && (auto.doublesOnly || auto.missingOnly) ? " (sauf quand le gain est atteint)" : ""}.`;
   }
   function createAutoPanel(controller) {
     const cells = /* @__PURE__ */ new Map();
@@ -6137,14 +6143,14 @@ Continuer ?`);
       rulesBlock,
       h(
         "label",
-        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, toute offre dont le gain (prix moyen de la carte reçue moins prix moyen de la carte donnée) atteint ce montant." },
+        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, toute offre dont le gain (prix moyen de la carte reçue moins prix moyen de la carte donnée) atteint ce montant. Cette règle passe devant « Seulement mes doublons » et « Seulement les cartes qu’il me manque » : un tel gain est pris même avec mon dernier exemplaire ou pour une carte que j’ai déjà." },
         gainCheck,
         h("span", {}, "Ou si gain ≥"),
         gainInput,
         h("span", { class: "kp-muted" }, "chakra")
       ),
-      h("label", { class: "kp-check", title: "Ne jamais donner le dernier exemplaire d’une carte. Les cartes verrouillées ne sont jamais données, quoi qu’il arrive." }, doublesCheck, h("span", {}, "Seulement mes doublons")),
-      h("label", { class: "kp-check", title: "N’accepter que les offres dont la carte reçue manque à ma collection : une carte que j’ai déjà, même en un seul exemplaire, n’est jamais prise." }, missingCheck, h("span", {}, "Seulement les cartes qu’il me manque")),
+      h("label", { class: "kp-check", title: "Ne jamais donner le dernier exemplaire d’une carte (sauf si « Ou si gain ≥ » est atteint). Les cartes verrouillées ne sont jamais données, quoi qu’il arrive." }, doublesCheck, h("span", {}, "Seulement mes doublons")),
+      h("label", { class: "kp-check", title: "N’accepter que les offres dont la carte reçue manque à ma collection : une carte que j’ai déjà, même en un seul exemplaire, n’est pas prise (sauf si « Ou si gain ≥ » est atteint)." }, missingCheck, h("span", {}, "Seulement les cartes qu’il me manque")),
       logTitle,
       log
     );

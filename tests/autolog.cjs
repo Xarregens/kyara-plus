@@ -57,9 +57,8 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   }));
   out.initial = await read();
   await page.click('.kp-auto__shortcut:has-text("tout")'); await page.waitForTimeout(100);
-  await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '1'); await page.waitForTimeout(100);
-  // only the cards I lack: the received card of every accepted offer must be absent from my collection (ids multiple of 3 are owned)
-  await page.check('.kp-check__box >> nth=2'); await page.waitForTimeout(100);
+  // rarity rules only (the gain rule outranks the two boxes below): only the cards I lack: the received card of every accepted offer must be absent from my collection (ids multiple of 3 are owned)
+  await page.check('.kp-check__box >> nth=2'); await page.uncheck('.kp-check__box >> nth=1'); await page.waitForTimeout(100);
   out.missingStored = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).autoMissingOnly);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")');
   await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 3, null, { timeout: 20000 });
@@ -86,7 +85,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   await page.click('.kp-side__tabs [role="tab"]:has-text("Auto-accept")'); await page.waitForTimeout(200);
   out.afterReload = await read();
   await page.click('.kp-auto__shortcut:has-text("rien")'); await page.waitForTimeout(100);
-  await page.fill('.kp-check .kp-input', '999999'); await page.waitForTimeout(100);
+  await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '999999'); await page.waitForTimeout(100);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")'); await page.waitForTimeout(500);
   out.afterRestart = await read();
   out.errors = errors;

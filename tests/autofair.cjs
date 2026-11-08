@@ -8,10 +8,13 @@ const characters = [
   { id: 'r1', name: 'Reçue 1', rarity: 'M', series: 'S', image: '' }, { id: 'a', name: 'Carte A', rarity: 'L', series: 'S', image: '' }, { id: 'b', name: 'Carte B', rarity: 'L', series: 'S', image: '' },
   { id: 'r2', name: 'Reçue 2', rarity: 'M', series: 'S', image: '' }, { id: 'c', name: 'Carte C', rarity: 'L', series: 'S', image: '' }, { id: 'd', name: 'Carte D', rarity: 'L', series: 'S', image: '' },
   { id: 'r3', name: 'Reçue 3', rarity: 'M', series: 'S', image: '' }, { id: 'e', name: 'Carte E', rarity: 'L', series: 'S', image: '' },
+  { id: 'r4', name: 'Reçue 4', rarity: 'M', series: 'S', image: '' }, { id: 'f', name: 'Carte F', rarity: 'L', series: 'S', image: '' },
+  { id: 'r5', name: 'Reçue 5', rarity: 'M', series: 'S', image: '' }, { id: 'g', name: 'Carte G', rarity: 'L', series: 'S', image: '' },
 ];
 // prices: gift = received − 2 × given on the Dons bar (1 200 left), the rest of the gap on Écart (4 000 left)
-const prices = { r1: 6000, a: 1000, b: 2500, r2: 3000, c: 1200, d: 1400, r3: 6000, e: 500 };
-const collection = ['a', 'b', 'c', 'd', 'e'].map((id) => ({ characterId: id, qty: 2, listable: 2, pinned: false }));
+const prices = { r1: 6000, a: 1000, b: 2500, r2: 3000, c: 1200, d: 1400, r3: 6000, e: 500, r4: 2000, f: 900, r5: 2000, g: 900 };
+// f is my last copy, r5 is a card I already own: the gain rule takes them anyway (it outranks the two boxes)
+const collection = [...['a', 'b', 'c', 'd', 'e', 'g'].map((id) => ({ characterId: id, qty: 2, listable: 2, pinned: false })), { characterId: 'f', qty: 1, listable: 1, pinned: false }, { characterId: 'r5', qty: 1, listable: 1, pinned: false }];
 const expires = new Date(Date.now() + 36e5 * 24).toISOString();
 const offers = [
   // o1: A is the most profitable (gain 5 000) but its gift of 4 000 exceeds my bar; B (gain 3 500, gift 1 000) passes
@@ -20,6 +23,8 @@ const offers = [
   { id: 'o2', status: 'open', characterId: 'r2', wantIds: ['c', 'd'], user: { id: 'u2', pseudo: 'Deux' }, expiresAt: expires },
   // o3: the only card would be refused: never attempted
   { id: 'o3', status: 'open', characterId: 'r3', wantIds: ['e'], user: { id: 'u3', pseudo: 'Trois' }, expiresAt: expires },
+  { id: 'o4', status: 'open', characterId: 'r4', wantIds: ['f'], user: { id: 'u4', pseudo: 'Quatre' }, expiresAt: expires },
+  { id: 'o5', status: 'open', characterId: 'r5', wantIds: ['g'], user: { id: 'u5', pseudo: 'Cinq' }, expiresAt: expires },
 ];
 const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDays: 2, pairDays: 2, freeRatio: 2, ignoreBelow: 100, maxRatio: 3, maxMargin: 10000, minPrice: 0 };
 (async () => {
@@ -58,8 +63,9 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   await page.click('.kp-side__tabs [role="tab"]:has-text("Auto-accept")');
   await page.waitForFunction(() => document.querySelector('.kp-bar__value') !== null, null, { timeout: 15000 }).catch(() => {});
   await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '1'); await page.waitForTimeout(100);
+  await page.check('.kp-check__box >> nth=1'); await page.check('.kp-check__box >> nth=2'); await page.waitForTimeout(100);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")');
-  await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 2, null, { timeout: 20000 }).catch(() => {});
+  await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 4, null, { timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(2500);
   await page.click('.kp-auto__head .kp-btn:has-text("Arrêter")'); await page.waitForTimeout(200);
   const out = {};
@@ -68,7 +74,8 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.status = await page.evaluate(() => document.querySelector('.kp-auto .kp-muted').textContent);
   out.errors = errors;
   const ok = accepted.includes('o1:b') && !accepted.includes('o1:a') && accepted.indexOf('o2:c') >= 0 && accepted.indexOf('o2:d') > accepted.indexOf('o2:c') && !accepted.some((a) => a.startsWith('o3:'))
-    && accepted.length === 3 && out.rows.length === 2 && !/ignorées/.test(out.status) && errors.length === 0;
+    && accepted.includes('o4:f') && accepted.includes('o5:g')
+    && accepted.length === 5 && out.rows.length === 4 && !/ignorées/.test(out.status) && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

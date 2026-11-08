@@ -32,8 +32,8 @@ Les mises à jour sont automatiques : Tampermonkey vérifie régulièrement ce d
 - Choisit la carte la plus rentable que le fair-play devrait accepter ; retente une fois avec la carte suivante si le site
   refuse.
 - Une ligne par rareté donnée, pastilles des raretés acceptées en retour, dont la même rareté (⇄) ; gain minimum par ligne
-  (`gain ≥`) ; règle globale « Ou si gain ≥ » ; « Seulement mes doublons » ; « Seulement les cartes qu'il me manque » ;
-  raccourcis tout / rien.
+  (`gain ≥`) ; règle globale « Ou si gain ≥ » ; « Seulement mes doublons » ; « Seulement les cartes qu'il me manque » (la règle
+  « Ou si gain ≥ » passe devant ces deux cases) ; raccourcis tout / rien.
 - Liste « Acceptés » avec le gain estimé de chaque échange et le total depuis l'activation (détail par rareté au survol),
   mémorisé au rechargement.
 
