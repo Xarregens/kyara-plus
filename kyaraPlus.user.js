@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.30
+// @version      2.35.31
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -28,6 +28,8 @@
     },
     offers: {
       pageSize: 60,
+      // after a click on "Proposer une carte", a dialog of the site is expected within this delay
+      proposeCheckMs: 1200,
       maxPages: 40,
       renderStep: 40,
       priorityRarities: ["M", "L"],
@@ -5123,7 +5125,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.30";
+  var SURVEY_VERSION = "2.35.31";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6550,6 +6552,29 @@ Continuer ?`);
   // src/features/market-offers/index.js
   var NATIVE_BOARD = "main section.board";
   var NATIVE_PROPOSE = `${NATIVE_BOARD} .bh button.btn-acc`;
+  // The site's own "Proposer" button, hidden under our board: by its known place first, then by its label anywhere in
+  // the page outside the script's own blocks (the site may rename or move it).
+  function findNativePropose() {
+    const known = document.querySelector(NATIVE_PROPOSE);
+    if (known) return known;
+    return [...document.querySelectorAll("main button, main a")].find((node) => !node.closest(".kp-board, .kp-side, .kp-act, [role='dialog']") && /^\s*(\S+\s+)?propos/i.test(node.textContent ?? "")) ?? null;
+  }
+  // Clicks it and checks that a dialog opened; otherwise the site's board is shown again (class kp-offers--site) so its
+  // own button can be used, and the console command kyaraPlusDiag.board() saves its layout for a fix.
+  function openNativePropose() {
+    const button = findNativePropose();
+    const reveal = (reason) => {
+      document.body.classList.add("kp-offers--site");
+      toast(`${reason} Le tableau du site est réaffiché au-dessus : utilise son bouton « Proposer ».`, "error");
+    };
+    if (!button) return reveal("Bouton « Proposer » du site introuvable.");
+    const before = document.querySelectorAll('[role="dialog"]').length;
+    button.click();
+    setTimeout(() => {
+      if (document.querySelectorAll('[role="dialog"]').length > before) return;
+      reveal("La fenêtre de proposition ne s’est pas ouverte.");
+    }, config_default.offers.proposeCheckMs);
+  }
   var SIDE_COLUMN = "main aside.chat-side";
   // Redraws are grouped: one per animation frame, and at most one every renderThrottleMs while the offers are being scanned.
   // The state itself is always current (auto-accept reads the store, not the screen).
@@ -6599,7 +6624,7 @@ Continuer ?`);
     mount() {
       const store = createStore(initialState3());
       const controller = createOffersController(store);
-      const board = createBoard(controller, { onPropose: () => document.querySelector(NATIVE_PROPOSE)?.click() });
+      const board = createBoard(controller, { onPropose: openNativePropose });
       const side = createSidePanel(controller);
       document.body.classList.add("kp-offers");
       const scheduler = createRenderScheduler((state) => {
@@ -6620,7 +6645,7 @@ Continuer ?`);
         board.root.remove();
         side.dispose();
         side.root.remove();
-        document.body.classList.remove("kp-offers");
+        document.body.classList.remove("kp-offers", "kp-offers--site");
       };
     }
   };
@@ -7311,11 +7336,11 @@ body.kp-offers main .layout {\r
 }\r
 \r
 /* The site may render its offer dialogs inside the board, so only the board's own content is hidden. */\r
-body.kp-offers main section.board {\r
+body.kp-offers:not(.kp-offers--site) main section.board {\r
   display: contents !important;\r
 }\r
 \r
-body.kp-offers main section.board > :not([role='dialog']):not(:has([role='dialog'])) {\r
+body.kp-offers:not(.kp-offers--site) main section.board > :not([role='dialog']):not(:has([role='dialog'])) {\r
   display: none !important;\r
 }\r
 \r
@@ -9453,11 +9478,21 @@ button.kp-act__stat:hover,\r
       syncFeatures();
       return `${disabled ? "désactivé" : "réactivé"} : ${ids.join(", ")}`;
     }
+    // the site's board of offers as it is (hidden under ours), to fix "Proposer une carte" when the site changes it
+    function board() {
+      const node = document.querySelector(NATIVE_BOARD) ?? document.querySelector("main");
+      if (!node) return "pas de tableau du site sur cette page : ouvre Marché → Échanges, puis relance kyaraPlusDiag.board()";
+      const html = node.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/<li[\s\S]*?<\/li>/g, (li, offset, all) => all.indexOf(li) < 4e4 ? li : "");
+      const buttons = [...document.querySelectorAll("main button")].filter((b) => !b.closest(".kp-board, .kp-side, .kp-act")).map((b) => ({ texte: b.textContent.trim().slice(0, 40), classes: b.className, parent: b.parentElement?.className ?? "" }));
+      const data = { version: SURVEY_VERSION, page: location.pathname + location.search, trouve: describeNode(findNativePropose()), boutons: buttons, html: html.slice(0, 2e5) };
+      return `fichier ${saveJson("kyara-board", data)} téléchargé`;
+    }
     window.kyaraPlusDiag = {
       menu,
       stop,
       download,
       dialog,
+      board,
       probe,
       last: null,
       off: (prefix) => setDisabled(prefix, true),

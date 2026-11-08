@@ -26,7 +26,8 @@ avant d'envoyer, ne jamais toucher au vrai site autrement qu'en lecture.
 prouvent pas la forme exacte des vraies réponses, qui vient des relevés (commandes console `kyaraPlusReleve.download()`,
 `kyaraPlusSeries.download()`, `kyaraPlusPerf()`) que le propriétaire peut fournir. Pour isoler un conflit avec le site :
 `kyaraPlusDiag.off("<id ou préfixe>")` désactive des fonctions (réglage `disabledFeatures`), `kyaraPlusDiag.menu()` +
-`download()` enregistre événements et mutations de l'en-tête.
+`download()` enregistre événements et mutations de l'en-tête, `dialog()` la fenêtre ouverte, `board()` le tableau des
+offres du site (bouton « Proposer »), `probe()` la pagination des offres du tableau.
 
 ## Ce que le site fait (observé dans les relevés, nov. 2026)
 
