@@ -61,6 +61,9 @@ offres du site (bouton « Proposer »), `probe()` la pagination des offres du ta
   mienne a la classe `mine`), `header .total` = « ≈ 423 ◆ » cartes + chakra aux prix fair-play, `.slots li img` =
   `/cards/sm/<id>.webp`, `label.ch input` = chakra, puis `.verdict` (bande du site), puis `.shelf` (grille). Le bloc
   `kp-verdict` du script s'insère après `.verdict`. `kyaraPlusDiag.dialog()` enregistre la fenêtre ouverte.
+- Tableau des offres du site redessiné (relevé du 08/11/2026) : `section.board[aria-label="Offres d’échange"]`,
+  `.filters .line button.prop` « Proposer une carte », `.pills` de filtres, `ul.offers > li.offer` avec `.acts` (« Donner X »,
+  « Proposer autre chose »). Le script masque ce tableau et clique son bouton ; voir `createProposeOpener`.
 - `/collection` sert les deux vues (Cartes et Albums) sur la même URL : une feature « albums » tourne aussi en vue Cartes.
 
 ## Goûts du propriétaire

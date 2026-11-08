@@ -17,6 +17,8 @@ const boards = {
   dead: '<section class="board"><div class="bh"><button class="btn-acc">Proposer</button></div></section>',
   // the site's window as a <dialog> element, or as a plain <div> with no dialog markup, both inside its header
   nativeDialog: '<section class="board"><div class="bh"><input class="search" placeholder="Chercher"><button class="btn-acc" onclick="openNative(this)">Proposer une carte</button></div><ul class="offers"><li>offre</li></ul></section>',
+  // the site's redesigned board (08/11/2026): "Proposer une carte" in .filters .line, the window opened at the end of the page
+  redesigned: '<section class="board" aria-label="Offres d’échange"><div class="filters"><div class="line"><div class="sbox"><input type="search" class="search"></div><button class="btn btn-acc btn-sm prop" type="button" onclick="openPortal()">Proposer une carte</button></div></div><ul class="offers"><li class="offer"><div class="acts"><button class="btn btn-ghost btn-sm">Proposer autre chose</button></div></li></ul></section>',
   plainModal: '<section class="board"><div class="bh"><input class="search" placeholder="Chercher"><button class="btn-acc" onclick="openPlain(this)">Proposer une carte</button></div><ul class="offers"><li>offre</li></ul></section>',
 };
 let boardHtml = boards.known;
@@ -53,6 +55,7 @@ let boardHtml = boards.known;
     localStorage.setItem('kyara_token', 'fake'); localStorage.setItem('kyara_device', 'dev');
     window.openNative = (button) => { const d = document.createElement('dialog'); d.className = 'site-dialog'; d.textContent = 'Proposer une offre'; button.parentElement.append(d); d.showModal(); };
     window.openPlain = (button) => { const d = document.createElement('div'); d.className = 'site-dialog modal'; d.style.cssText = 'position:fixed;inset:20%;background:#222;color:#fff'; d.innerHTML = '<p>Proposer une offre</p><button class="close" onclick="this.parentElement.remove()">Fermer</button>'; button.parentElement.append(d); };
+    window.openPortal = () => { const d = document.createElement('div'); d.className = 'site-dialog portal'; d.style.cssText = 'position:fixed;inset:25%;z-index:50;background:#222;color:#fff'; d.textContent = 'Proposer une offre'; document.body.append(d); };
     window.openDialog = (button) => { const d = document.createElement('div'); d.setAttribute('role', 'dialog'); d.className = 'site-dialog'; d.textContent = 'Proposer une offre'; button.closest('section.board').append(d); };
   });
   const out = {};
@@ -80,14 +83,16 @@ let boardHtml = boards.known;
   await page.click('.kp-back-to-kp'); await page.waitForTimeout(200);
   out.afterBack = await page.evaluate(() => ({ revealed: document.body.classList.contains('kp-offers--site'), backButton: Boolean(document.querySelector('.kp-back-to-kp')) }));
   out.nativeDialog = await run('nativeDialog');
+  out.redesigned = await run('redesigned');
   out.plainModal = await run('plainModal');
   await page.click('.site-dialog .close'); await page.waitForTimeout(300);
   out.afterClose = await page.evaluate(() => ({ flags: document.querySelectorAll('.kp-site-modal, .kp-site-modal-path').length, siteBoardVisible: [...document.querySelectorAll('main section.board :is(button.btn-acc, input.search, ul.offers)')].some((n) => n.getBoundingClientRect().height > 0) }));
+  out.redesignedFound = await (async () => { boardHtml = boards.redesigned; await page.goto('https://kyara.games/marche?onglet=offres'); await page.addScriptTag({ content: script }); await page.waitForSelector('.kp-board'); const [file] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => kyaraPlusDiag.board())]); return JSON.parse(fs.readFileSync(await file.path(), 'utf8')).trouve; })();
   // the capture works on this page too
   await run('dead');
   const [file] = await Promise.all([page.waitForEvent('download'), page.evaluate(() => kyaraPlusDiag.board())]);
   out.boardFile = JSON.parse(fs.readFileSync(await file.path(), 'utf8'));
-  out.boardFile = { name: file.suggestedFilename(), trouve: out.boardFile.trouve, boutons: out.boardFile.boutons.length, html: out.boardFile.html.length };
+  out.boardFile = { name: file.suggestedFilename(), trouve: out.boardFile.trouve, essai: out.boardFile.dernierEssai?.resultat, corps: out.boardFile.corps.length, boutons: out.boardFile.boutons.length, html: out.boardFile.html.length };
   out.errors = errors;
   const ok = out.known.dialogVisible && !out.known.revealed && !out.known.siteBoardVisible
     && out.renamed.dialogVisible && !out.renamed.revealed
@@ -95,8 +100,9 @@ let boardHtml = boards.known;
     && !out.afterBack.revealed && !out.afterBack.backButton
     && out.nativeDialog.dialogVisible && !out.nativeDialog.revealed && !out.nativeDialog.siteBoardVisible
     && out.plainModal.dialogVisible && !out.plainModal.revealed && !out.plainModal.siteBoardVisible
+    && /button\.btn\.btn-acc\.btn-sm\.prop "Proposer une carte"/.test(out.redesignedFound) && out.redesigned.dialogVisible && !out.redesigned.revealed && !out.redesigned.siteBoardVisible && !out.redesigned.backButton
     && out.afterClose.flags === 0 && !out.afterClose.siteBoardVisible
-    && /^kyara-board-.*\.json$/.test(out.boardFile.name) && /button\.btn-acc/.test(out.boardFile.trouve) && out.boardFile.html > 0 && errors.length === 0;
+    && /^kyara-board-.*\.json$/.test(out.boardFile.name) && /button\.btn-acc/.test(out.boardFile.trouve) && out.boardFile.essai === 'rien' && out.boardFile.corps > 0 && out.boardFile.html > 0 && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

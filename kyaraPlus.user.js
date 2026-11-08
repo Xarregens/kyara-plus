@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.32
+// @version      2.35.33
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -5125,7 +5125,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.32";
+  var SURVEY_VERSION = "2.35.33";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6551,7 +6551,10 @@ Continuer ?`);
 
   // src/features/market-offers/index.js
   var NATIVE_BOARD = "main section.board";
-  var NATIVE_PROPOSE = `${NATIVE_BOARD} .bh button.btn-acc`;
+  // the site's "Proposer une carte" (tableau redessiné, relevé du 08/11/2026 : .filters .line button.prop), then the old place
+  var NATIVE_PROPOSE = `${NATIVE_BOARD} button.prop, ${NATIVE_BOARD} .bh button.btn-acc`;
+  // the last click on "Proposer une carte": what it found and what the site added (saved by kyaraPlusDiag.board())
+  var lastProposeAttempt = null;
   // The site's own "Proposer" button, hidden under our board: by its known place first, then by its label anywhere in
   // the page outside the script's own blocks (the site may rename or move it).
   function findNativePropose() {
@@ -6601,19 +6604,26 @@ Continuer ?`);
       const boardNode = document.querySelector(NATIVE_BOARD);
       const modalsBefore = new Set(document.querySelectorAll(SITE_MODAL));
       const added = [];
+      // the whole page is watched: the site may open its window outside its board (at the end of the page, for instance)
       const recorder = new MutationObserver((records) => {
         for (const record of records) for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) added.push(node);
       });
-      if (boardNode) recorder.observe(boardNode, { childList: true, subtree: true });
+      recorder.observe(document.body, { childList: true, subtree: true });
       button.click();
       setTimeout(() => {
         recorder.disconnect();
+        // what the site added: outermost nodes only, never the script's own blocks, the chat or the header
+        const fresh = added.filter((node) => node.isConnected && !node.closest(".kp-board, .kp-side, .kp-act, .kp-toasts, aside.chat-side, header") && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
+        const inBoard = fresh.filter((node) => boardNode?.contains(node));
+        const elsewhere = fresh.filter((node) => !boardNode?.contains(node));
         const modal = [...document.querySelectorAll(SITE_MODAL)].find((node) => !modalsBefore.has(node));
+        const outcome = modal ? "fenêtre" : inBoard.length ? "ajout dans le tableau" : elsewhere.length ? "ajout ailleurs" : "rien";
+        lastProposeAttempt = { at: new Date().toISOString(), bouton: describeNode(button), resultat: outcome, fenetre: modal ? describeNode(modal) : null, dansTableau: inBoard.slice(0, 8).map(describeNode), ailleurs: elsewhere.slice(0, 8).map(describeNode) };
         // a dialog inside the site's board: its surroundings (search, buttons of the header…) stay hidden
         if (modal) return boardNode?.contains(modal) && modal.parentElement !== boardNode ? flag(modal, boardNode) : void 0;
-        // the outermost element the site added, inside its board and outside the script's blocks
-        const fresh = added.filter((node) => node.isConnected && !node.closest(".kp-board, .kp-side") && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
-        if (boardNode && fresh.length) return flag(fresh[0], boardNode);
+        if (inBoard.length) return flag(inBoard[0], boardNode);
+        // something appeared elsewhere in the page: it is not hidden by the script, nothing to do
+        if (elsewhere.length) return;
         reveal("La fenêtre de proposition ne s’est pas ouverte.");
       }, config_default.offers.proposeCheckMs);
     }
@@ -9565,7 +9575,8 @@ button.kp-act__stat:hover,\r
       const html = node.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/<li[\s\S]*?<\/li>/g, (li, offset, all) => all.indexOf(li) < 4e4 ? li : "");
       const buttons = [...document.querySelectorAll("main button")].filter((b) => !b.closest(".kp-board, .kp-side, .kp-act")).map((b) => ({ texte: b.textContent.trim().slice(0, 40), classes: b.className, parent: b.parentElement?.className ?? "" }));
       const fenetres = [...document.querySelectorAll(SITE_MODAL), ...document.querySelectorAll(".kp-site-modal")].map((modal) => modal.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").slice(0, 3e4));
-      const data = { version: SURVEY_VERSION, page: location.pathname + location.search, trouve: describeNode(findNativePropose()), boutons: buttons, fenetres, html: html.slice(0, 2e5) };
+      const corps = [...document.body.children].map(describeNode);
+      const data = { version: SURVEY_VERSION, page: location.pathname + location.search, trouve: describeNode(findNativePropose()), dernierEssai: lastProposeAttempt, corps, boutons: buttons, fenetres, html: html.slice(0, 2e5) };
       return `fichier ${saveJson("kyara-board", data)} téléchargé`;
     }
     window.kyaraPlusDiag = {
