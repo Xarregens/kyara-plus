@@ -21,6 +21,8 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `scrollkeep.cjs` | Mon activité (Tableau, 210 lignes) | Position de défilement et ligne du haut inchangées après le rafraîchissement d'une minute (lignes réutilisées, pas de remontée de page). Dure 70 s. |
 | `boardmemory.cjs` | Mon activité (Tableau) | Offres du tableau mémorisées entre deux visites quand le site ne les renvoie plus ; offres ouvertes non mémorisées ; « Voir plus ». |
 | `discuss.cjs` | Mon activité (Échanges) | Discussion dans la ligne : « Discuter (N) », messages lus, envoi (Entrée), compteur mis à jour, fermeture. |
+| `wake.cjs` | Mon activité | Rafraîchissement immédiat quand le site relit ses échanges ou redessine son panneau ; pas de boucle sur les propres requêtes du script. |
+| `dialogchips.cjs` | Proposer un échange | Filtres du script dans leur rangée (jamais en double), « Il me manque » immédiat, « Ses doubles » dès les exemplaires connus, demandés en priorité ; changement d'onglet. |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |
 | `loadtime_run.cjs` | Mon activité | Temps jusqu'au premier affichage et aux premières lignes, chronologie des requêtes. |
 | `tree.cjs` | Mon activité | Onglets centrés, cadre des sous-catégories et sa pointe. |

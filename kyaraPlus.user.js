@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.27
+// @version      2.35.28
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -100,6 +100,9 @@
     },
     activity: {
       refreshMs: 6e4,
+      // refresh right behind the site's own reads (a new trade shows on its page at once), at most this often
+      wakeDelayMs: 400,
+      wakeMinGapMs: 4e3,
       renderStep: 30,
       // 200 asked per page: if the site caps at 50 nothing changes, if it accepts more, four times fewer requests
       historyPageSize: 200,
@@ -280,7 +283,9 @@
       return await fetch(`/api${path}`, {
         method,
         headers: buildHeaders({ hasBody: body !== void 0, withPass, extra: headers }),
-        body: body === void 0 ? void 0 : JSON.stringify(body)
+        body: body === void 0 ? void 0 : JSON.stringify(body),
+        // marks the script's own requests, so the taps on the site's answers can tell them apart
+        kpOwn: true
       });
     } catch {
       throw new ApiError(0, ErrorCode.NETWORK);
@@ -359,12 +364,13 @@
     cancelOffer: (offerId) => request(`/trades/offers/${encodeURIComponent(offerId)}/cancel`, { method: "POST" }),
     propose: (body) => request("/trades", { method: "POST", body, withPass: true }),
     // Only accept is pass-protected on the site; decline and cancel are plain POSTs without a body.
-    act: (tradeId, action) => request(`/trades/${encodeURIComponent(tradeId)}/${action}`, { method: "POST", withPass: action === "accept" }),
+    act: (tradeId, action) => request(`/trades/${encodeURIComponent(tradeId)}/${action}`, { method: "POST", withPass: action === "accept", priority: true }),
     // Discussion of a direct trade (relevé du 06/11/2026) : GET → [{ id, senderId, text, createdAt }], POST { text } → the message
     messages: (tradeId) => request(`/trades/${encodeURIComponent(tradeId)}/messages`),
     sendMessage: (tradeId, text) => request(`/trades/${encodeURIComponent(tradeId)}/messages`, { method: "POST", body: { text } }),
     custom: ({ method, path, body }) => request(path, { method, body, withPass: method !== "GET" }),
-    availableFrom: (userId2) => request(`/trades/available/${encodeURIComponent(userId2)}`),
+    // ahead of the queue: the "Ses doubles" filter of the trade dialog waits for it, behind the price batches otherwise
+    availableFrom: (userId2) => request(`/trades/available/${encodeURIComponent(userId2)}`, { priority: true }),
     ownedBy: (userId2) => request(`/trades/owned/${encodeURIComponent(userId2)}`),
     searchOffers: ({ takeable, ids, ...params }) => request(`/trades/offers/search${query({ ...params, takeable: takeable ? 1 : void 0, ids: ids?.join(",") })}`),
     acceptOffer: (offerId, withId) => request(`/trades/offers/${encodeURIComponent(offerId)}/accept`, {
@@ -2068,6 +2074,21 @@ Continuer ?`);
 
   // Every /me/bootstrap answer seen on the page (the site's own calls as well as the script's, through the fetch/XHR
   // taps) is handed to these listeners: the header badge stays current without a request of its own.
+  // The site's own API answers (not the script's): a feature can react at once to what the site just learnt
+  // (a trade received, an offer taken…) instead of waiting for its next poll.
+  var siteResponseListeners = /* @__PURE__ */ new Set();
+  function onSiteResponse(listener) {
+    siteResponseListeners.add(listener);
+    return () => siteResponseListeners.delete(listener);
+  }
+  function notifySiteResponse(path, status) {
+    for (const listener of siteResponseListeners) {
+      try {
+        listener(path, status);
+      } catch {
+      }
+    }
+  }
   var bootstrapListeners = /* @__PURE__ */ new Set();
   var lastBootstrap = null;
   function notifyBootstrap(data) {
@@ -3023,6 +3044,8 @@ Continuer ?`);
         notify3.error(describeError(error));
       }
     }
+    // The row is freed as soon as the site has answered; the reload of the lists runs behind (it queues behind the
+    // other requests and used to keep the button greyed for seconds).
     async function run(key, task, success) {
       setBusy(key, true);
       try {
@@ -3031,8 +3054,8 @@ Continuer ?`);
       } catch (error) {
         notify3.error(describeError(error));
       }
-      await reloadAfterChange();
       setBusy(key, false);
+      await reloadAfterChange();
     }
     const forTrade = (action, success) => (item) => run(item.key, () => api3.tradeAction(item.trade.id, action), success);
     const actions2 = {
@@ -4031,6 +4054,8 @@ Continuer ?`);
   var SECTIONS_TABLIST = '[role="tablist"][aria-label="Sections du marché"] [role="tab"]';
   var URL_WATCH_MS = 1e3;
   var NATIVE_CLASS = "kp-activity--native";
+  // the site's answers that mean something changed in my trades, offers or market
+  var WAKE_PATHS = /^\/api\/(me\/trades|me\/market|me\/notifications|trades\/offers\/mine|trades\/[^/]+\/(accept|decline|cancel)|trades)$/;
   var FIRST_CATEGORY = {
     ventes: Category.SALES,
     mises: Category.BIDS,
@@ -4118,8 +4143,52 @@ Continuer ?`);
         () => config_default.activity.refreshMs,
         (error) => toast(`Mise à jour de Mon activité arrêtée : ${describeError(error)}`, "error")
       );
+      // The site learns of a new trade or a taken offer at once (its own page shows it instantly): when it reads its
+      // trades, market or offers again, or redraws its (hidden) panel, Mon activité is refreshed right behind it.
+      let wakeTimer = 0;
+      let lastWake = 0;
+      const wake = (delayMs) => {
+        if (wakeTimer) return;
+        const wait = Math.max(delayMs, lastWake + config_default.activity.wakeMinGapMs - Date.now());
+        wakeTimer = setTimeout(() => {
+          wakeTimer = 0;
+          lastWake = Date.now();
+          controller.refreshLive().catch(() => {
+          });
+        }, Math.max(0, wait));
+      };
+      const stopSiteTap = onSiteResponse((path, status) => {
+        if (status === 200 && WAKE_PATHS.test(path)) wake(config_default.activity.wakeDelayMs);
+      });
+      // only when what the site shows actually changed (its text), not on every redraw
+      let panelText = null;
+      const siteText = (tabpanel) => [...tabpanel.children].filter((child) => child !== panel.root).map((child) => child.textContent).join("\n");
+      const panelObserver = new MutationObserver((records) => {
+        if (!observedPanel || records.every((record) => panel.root.contains(record.target))) return;
+        const text = siteText(observedPanel);
+        if (text === panelText) return;
+        const first = panelText === null;
+        panelText = text;
+        if (!first) wake(config_default.activity.wakeDelayMs);
+      });
+      const observePanel = () => {
+        const tabpanel = document.querySelector(ACTIVITY_PANEL);
+        if (tabpanel && tabpanel !== observedPanel) {
+          observedPanel = tabpanel;
+          panelText = siteText(tabpanel);
+          panelObserver.disconnect();
+          panelObserver.observe(tabpanel, { childList: true, subtree: true, characterData: true });
+        }
+      };
+      let observedPanel = null;
+      observePanel();
+      const panelTimer = setInterval(observePanel, URL_WATCH_MS);
       return () => {
         stopPolling();
+        stopSiteTap();
+        panelObserver.disconnect();
+        clearInterval(panelTimer);
+        clearTimeout(wakeTimer);
         clearInterval(urlTimer);
         controller.dispose();
         unsubscribe();
@@ -4242,14 +4311,15 @@ Continuer ?`);
         const entry = collection?.get(id);
         return entry ? Math.min(entry.listable ?? 0, entry.qty - 1) : 0;
       };
+      // ready: the data a filter needs is there (a filter applies as soon as its own data is loaded, without waiting for the rest)
       const filters = {
         mine: [
-          { key: "myDuplicates", label: "Mes doubles", keep: ({ id }) => mySpares(id) > 0 },
-          { key: "theyLack", label: "Il lui manque", keep: ({ tile: tile2 }) => Boolean(tile2.querySelector(".lack")) }
+          { key: "myDuplicates", label: "Mes doubles", ready: () => Boolean(collection), keep: ({ id }) => mySpares(id) > 0 },
+          { key: "theyLack", label: "Il lui manque", ready: () => true, keep: ({ tile: tile2 }) => Boolean(tile2.querySelector(".lack")) }
         ],
         theirs: [
-          { key: "theirDuplicates", label: "Ses doubles", keep: ({ count }) => count >= DUPLICATE_MIN },
-          { key: "iLack", label: "Il me manque", keep: ({ id }) => myQty(id) === 0 }
+          { key: "theirDuplicates", label: "Ses doubles", ready: ({ count }) => count != null, keep: ({ count }) => count >= DUPLICATE_MIN },
+          { key: "iLack", label: "Il me manque", ready: () => Boolean(collection), keep: ({ id }) => myQty(id) === 0 }
         ]
       };
       const chips = Object.fromEntries(
@@ -4268,18 +4338,24 @@ Continuer ?`);
           })
         ])
       );
+      // Our chips live in a row of their own, placed before the site's row (which is hidden): the site redraws its row
+      // freely without ever duplicating or losing ours. The row borrows the site's classes to look the same.
+      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs);
       function placeChips(shelf, tab) {
-        const row = shelf.querySelector(".chips");
-        if (!row) return;
-        const siteChips = [...row.querySelectorAll("button.only:not([data-kp-filter])")];
+        const siteRow = [...shelf.querySelectorAll(".chips")].find((row) => row !== chipRow && !row.getAttribute("aria-label"));
+        if (!siteRow) return;
+        const siteChips = [...siteRow.querySelectorAll("button")];
         siteChips.filter((chip) => chip.classList.contains("on")).forEach((chip) => chip.click());
-        siteChips.forEach((chip) => chip.classList.add("kp-site-only"));
+        siteRow.classList.add("kp-site-only");
         const baseClass = (siteChips[0]?.className ?? "only").replace(/\b(on|kp-site-only)\b/g, "").trim();
-        for (const [key, list] of Object.entries(chips)) if (key !== tab) list.forEach((chip) => chip.remove());
-        const tabChips = chips[tab];
-        if (tabChips.every((chip) => chip.parentElement === row)) return;
-        tabChips.forEach((chip) => chip.className = `${baseClass}${active.has(chip.dataset.kpFilter) ? " on" : ""}`);
-        row.prepend(...tabChips);
+        chipRow.className = `${siteRow.className.replace(/\bkp-site-only\b/, "").trim()} kp-dialog-chips`;
+        for (const [key, list] of Object.entries(chips)) {
+          for (const chip of list) {
+            chip.hidden = key !== tab;
+            chip.className = `${baseClass}${active.has(chip.dataset.kpFilter) ? " on" : ""}`;
+          }
+        }
+        if (chipRow.nextElementSibling !== siteRow) siteRow.before(chipRow);
       }
       function decorate2() {
         const shelf = document.querySelector(SHELF);
@@ -4294,7 +4370,7 @@ Continuer ?`);
           const id = tileCardId(tile2);
           const count = counts ? counts.get(id) ?? 0 : null;
           renderCount(tile2, count);
-          const hidden = count != null && activeFilters.some((filter) => !filter.keep({ id, tile: tile2, count }));
+          const hidden = activeFilters.some((filter) => filter.ready({ count }) && !filter.keep({ id, tile: tile2, count }));
           tile2.closest("li")?.classList.toggle("kp-filtered-out", hidden);
         }
         orderTiles(shelf, tiles);
@@ -4311,7 +4387,7 @@ Continuer ?`);
         cancelAnimationFrame(frame);
         sorter.stop();
         clearOrder(document.querySelectorAll(`${SHELF} ul.grid > li`));
-        Object.values(chips).flat().forEach((chip) => chip.remove());
+        chipRow.remove();
         document.querySelectorAll(".kp-site-only").forEach((chip) => chip.classList.remove("kp-site-only"));
         clearCounts();
       };
@@ -5039,7 +5115,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.27";
+  var SURVEY_VERSION = "2.35.28";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6687,6 +6763,13 @@ Continuer ?`);
   };
   function tapResponse(kind, url, status, text, request = {}) {
     if (seriesSurveyWatching()) seriesSurveyRecord(kind, url, status, text, request);
+    if (!request.own) {
+      try {
+        const parsed = new URL(url, location.origin);
+        if (parsed.origin === location.origin && parsed.pathname.startsWith("/api/")) notifySiteResponse(parsed.pathname, status);
+      } catch {
+      }
+    }
     if (status === 200 && isBootstrapUrl(url)) {
       try {
         notifyBootstrap(JSON.parse(text));
@@ -6701,10 +6784,11 @@ Continuer ?`);
       result.then((response) => {
         try {
           const url = typeof input === "string" ? input : input?.url ?? String(input);
-          if (!seriesSurveyWatching() && !isBootstrapUrl(url)) return;
+          const own = Boolean(init?.kpOwn);
+          if (!seriesSurveyWatching() && !isBootstrapUrl(url) && (own || !siteResponseListeners.size)) return;
           const method = init?.method ?? input?.method ?? "GET";
           const requestBody = typeof init?.body === "string" ? init.body : null;
-          response.clone().text().then((text) => tapResponse("fetch", url, response.status, text, { method, requestBody })).catch(() => {
+          response.clone().text().then((text) => tapResponse("fetch", url, response.status, text, { method, requestBody, own })).catch(() => {
           });
         } catch {
         }
@@ -6721,7 +6805,7 @@ Continuer ?`);
     XMLHttpRequest.prototype.send = function(body) {
       this.addEventListener("load", () => {
         try {
-          tapResponse("xhr", this.__kpUrl, this.status, this.responseText, { method: this.__kpMethod ?? "GET", requestBody: typeof body === "string" ? body : null });
+          tapResponse("xhr", this.__kpUrl, this.status, this.responseText, { method: this.__kpMethod ?? "GET", requestBody: typeof body === "string" ? body : null, own: false });
         } catch {
         }
       });
