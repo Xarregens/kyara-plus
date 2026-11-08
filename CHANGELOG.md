@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.32
+- Tableau des offres : la 2.35.31 basculait sur le tableau du site après « Proposer une carte », parce que la fenêtre
+  ouverte par le site n'était pas reconnue. Le script reconnaît maintenant toute fenêtre que le site ajoute après le
+  clic et n'affiche qu'elle, par-dessus le tableau Kyara Plus, qui reste en place. Le tableau du site n'est réaffiché
+  qu'en tout dernier recours, avec un bouton « Revenir à la vue Kyara Plus ».
+
 ## 2.35.31
 - Tableau des offres : « Proposer une carte » retrouve le bouton « Proposer » du site même s'il a été renommé ou
   déplacé. Si aucune fenêtre ne s'ouvre, un message le dit et le tableau du site est réaffiché pour utiliser son

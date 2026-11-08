@@ -14,7 +14,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `navigate.cjs` | Accueil → Collection | Navigation interne du site (pushState natif, hors de portée du script) : barre de filtres des albums montée, retirée en partant, remontée au retour. |
 | `lossfilter.cjs` | Tableau des offres | Bouton partagé « Symbios la tepu » / « Sans aucune perte » : cartes cachées selon le côté, exclusivité des côtés. |
 | `smoke.cjs` | Tableau des offres | Temps d'apparition du tableau, de la jauge, des pastilles ; nombre de rendus ; requêtes. |
-| `propose.cjs` | Tableau des offres | « Proposer une carte » : bouton du site connu, renommé / déplacé, ou sans effet (tableau du site réaffiché + message) ; `kyaraPlusDiag.board()`. |
+| `propose.cjs` | Tableau des offres | « Proposer une carte » : bouton du site connu, renommé / déplacé ; fenêtre du site en `role=dialog`, en `<dialog>` ou simple bloc, seule visible au-dessus du tableau Kyara Plus ; sans effet → tableau du site + bouton de retour ; `kyaraPlusDiag.board()`. |
 | `interact.cjs` | Tableau des offres | Masquer / réafficher, « Voir plus », filtres, recherche, « Donner » (état occupé + refus serveur). |
 | `verdict.cjs` | Proposer un échange | Bloc Fair-play sous la bande du site : phrase de verdict, « Détails » mémorisé, barres du joueur concerné et limite entre les deux ; mise à jour quand les totaux changent ; retrait à la fermeture. |
 | `widths.cjs` | Panneau de droite | Tuiles de même largeur, aucun bouton tronqué. |

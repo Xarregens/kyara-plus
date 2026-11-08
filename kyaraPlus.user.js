@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.31
+// @version      2.35.32
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -5125,7 +5125,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.31";
+  var SURVEY_VERSION = "2.35.32";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6559,21 +6559,76 @@ Continuer ?`);
     if (known) return known;
     return [...document.querySelectorAll("main button, main a")].find((node) => !node.closest(".kp-board, .kp-side, .kp-act, [role='dialog']") && /^\s*(\S+\s+)?propos/i.test(node.textContent ?? "")) ?? null;
   }
-  // Clicks it and checks that a dialog opened; otherwise the site's board is shown again (class kp-offers--site) so its
-  // own button can be used, and the console command kyaraPlusDiag.board() saves its layout for a fix.
-  function openNativePropose() {
-    const button = findNativePropose();
+  // What the site may use for its proposal window: a dialog element, an ARIA dialog or any modal
+  var SITE_MODAL = "dialog, [role='dialog'], [aria-modal='true']";
+  // Clicks the site's button and makes sure what it opens is visible, while the rest of the site's board stays hidden:
+  // a dialog is kept visible by the CSS; anything else the site adds to its board right after the click (a window
+  // with no dialog markup) is flagged kp-site-modal and its ancestors kp-site-modal-path (shown, their other children
+  // hidden). Only when nothing at all appears is the site's board shown again (class kp-offers--site), with a button to
+  // come back to the Kyara Plus view; kyaraPlusDiag.board() then saves the site's board for a fix.
+  function createProposeOpener() {
+    let flagged = null;
+    let backButton = null;
+    const clearFlag = () => {
+      document.querySelectorAll(".kp-site-modal, .kp-site-modal-path").forEach((node) => node.classList.remove("kp-site-modal", "kp-site-modal-path"));
+      flagged = null;
+    };
+    const flag = (node, boardNode) => {
+      clearFlag();
+      flagged = node;
+      node.classList.add("kp-site-modal");
+      for (let parent = node.parentElement; parent && parent !== boardNode; parent = parent.parentElement) parent.classList.add("kp-site-modal-path");
+    };
+    const watcher = new MutationObserver(() => {
+      if (flagged && !flagged.isConnected) clearFlag();
+    });
+    const unreveal = () => {
+      document.body.classList.remove("kp-offers--site");
+      backButton?.remove();
+      backButton = null;
+    };
     const reveal = (reason) => {
       document.body.classList.add("kp-offers--site");
-      toast(`${reason} Le tableau du site est réaffiché au-dessus : utilise son bouton « Proposer ».`, "error");
+      toast(`${reason} Le tableau du site est réaffiché : utilise son bouton « Proposer ».`, "error");
+      if (!backButton) {
+        backButton = h("button", { class: "kp-btn kp-btn--sm kp-back-to-kp", type: "button", onClick: unreveal }, "Revenir à la vue Kyara Plus");
+        document.body.append(backButton);
+      }
     };
-    if (!button) return reveal("Bouton « Proposer » du site introuvable.");
-    const before = document.querySelectorAll('[role="dialog"]').length;
-    button.click();
-    setTimeout(() => {
-      if (document.querySelectorAll('[role="dialog"]').length > before) return;
-      reveal("La fenêtre de proposition ne s’est pas ouverte.");
-    }, config_default.offers.proposeCheckMs);
+    function open() {
+      const button = findNativePropose();
+      if (!button) return reveal("Bouton « Proposer » du site introuvable.");
+      const boardNode = document.querySelector(NATIVE_BOARD);
+      const modalsBefore = new Set(document.querySelectorAll(SITE_MODAL));
+      const added = [];
+      const recorder = new MutationObserver((records) => {
+        for (const record of records) for (const node of record.addedNodes) if (node.nodeType === Node.ELEMENT_NODE) added.push(node);
+      });
+      if (boardNode) recorder.observe(boardNode, { childList: true, subtree: true });
+      button.click();
+      setTimeout(() => {
+        recorder.disconnect();
+        const modal = [...document.querySelectorAll(SITE_MODAL)].find((node) => !modalsBefore.has(node));
+        // a dialog inside the site's board: its surroundings (search, buttons of the header…) stay hidden
+        if (modal) return boardNode?.contains(modal) && modal.parentElement !== boardNode ? flag(modal, boardNode) : void 0;
+        // the outermost element the site added, inside its board and outside the script's blocks
+        const fresh = added.filter((node) => node.isConnected && !node.closest(".kp-board, .kp-side") && !added.some((other) => other !== node && other.isConnected && other.contains(node)));
+        if (boardNode && fresh.length) return flag(fresh[0], boardNode);
+        reveal("La fenêtre de proposition ne s’est pas ouverte.");
+      }, config_default.offers.proposeCheckMs);
+    }
+    return {
+      open,
+      watch: () => {
+        const boardNode = document.querySelector(NATIVE_BOARD);
+        if (boardNode) watcher.observe(boardNode, { childList: true, subtree: true });
+      },
+      dispose: () => {
+        watcher.disconnect();
+        clearFlag();
+        unreveal();
+      }
+    };
   }
   var SIDE_COLUMN = "main aside.chat-side";
   // Redraws are grouped: one per animation frame, and at most one every renderThrottleMs while the offers are being scanned.
@@ -6624,7 +6679,11 @@ Continuer ?`);
     mount() {
       const store = createStore(initialState3());
       const controller = createOffersController(store);
-      const board = createBoard(controller, { onPropose: openNativePropose });
+      const opener = createProposeOpener();
+      const board = createBoard(controller, { onPropose: () => {
+        opener.watch();
+        opener.open();
+      } });
       const side = createSidePanel(controller);
       document.body.classList.add("kp-offers");
       const scheduler = createRenderScheduler((state) => {
@@ -6645,6 +6704,7 @@ Continuer ?`);
         board.root.remove();
         side.dispose();
         side.root.remove();
+        opener.dispose();
         document.body.classList.remove("kp-offers", "kp-offers--site");
       };
     }
@@ -7340,8 +7400,28 @@ body.kp-offers:not(.kp-offers--site) main section.board {\r
   display: contents !important;\r
 }\r
 \r
-body.kp-offers:not(.kp-offers--site) main section.board > :not([role='dialog']):not(:has([role='dialog'])) {\r
+body.kp-offers:not(.kp-offers--site) main section.board > :not(:is(dialog, [role='dialog'], [aria-modal='true'], .kp-site-modal, .kp-site-modal-path)):not(:has(dialog, [role='dialog'], [aria-modal='true'], .kp-site-modal)) {\r
   display: none !important;\r
+}\r
+\r
+body.kp-offers:not(.kp-offers--site) .kp-site-modal-path {\r
+  display: contents !important;\r
+}\r
+\r
+body.kp-offers:not(.kp-offers--site) .kp-site-modal-path > :not(.kp-site-modal):not(.kp-site-modal-path):not(:is(dialog, [role='dialog'], [aria-modal='true'])):not(:has(dialog, [role='dialog'], [aria-modal='true'])) {\r
+  display: none !important;\r
+}\r
+\r
+/* the site's window is drawn above the script's board */\r
+body.kp-offers .kp-site-modal {\r
+  z-index: 1000 !important;\r
+}\r
+\r
+.kp-back-to-kp {\r
+  position: fixed;\r
+  right: 16px;\r
+  bottom: 16px;\r
+  z-index: 9000;\r
 }\r
 \r
 .kp-tab-link {\r
@@ -9484,7 +9564,8 @@ button.kp-act__stat:hover,\r
       if (!node) return "pas de tableau du site sur cette page : ouvre Marché → Échanges, puis relance kyaraPlusDiag.board()";
       const html = node.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").replace(/<li[\s\S]*?<\/li>/g, (li, offset, all) => all.indexOf(li) < 4e4 ? li : "");
       const buttons = [...document.querySelectorAll("main button")].filter((b) => !b.closest(".kp-board, .kp-side, .kp-act")).map((b) => ({ texte: b.textContent.trim().slice(0, 40), classes: b.className, parent: b.parentElement?.className ?? "" }));
-      const data = { version: SURVEY_VERSION, page: location.pathname + location.search, trouve: describeNode(findNativePropose()), boutons: buttons, html: html.slice(0, 2e5) };
+      const fenetres = [...document.querySelectorAll(SITE_MODAL), ...document.querySelectorAll(".kp-site-modal")].map((modal) => modal.outerHTML.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "<email>").slice(0, 3e4));
+      const data = { version: SURVEY_VERSION, page: location.pathname + location.search, trouve: describeNode(findNativePropose()), boutons: buttons, fenetres, html: html.slice(0, 2e5) };
       return `fichier ${saveJson("kyara-board", data)} téléchargé`;
     }
     window.kyaraPlusDiag = {
