@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.36
+- Tableau des offres : avant d'accepter un échange à perte (la carte donnée vaut plus que la carte reçue, d'après les
+  prix moyens), une fenêtre demande confirmation : les deux cartes, la perte estimée, « Annuler » ou « Donner quand
+  même ». Reprise du script d'essai de Myuki (2.34.3.2). Une puce « Confirmer les pertes » dans les filtres du tableau
+  permet de couper cette fenêtre (réglage mémorisé). L'auto-accept n'est pas concerné.
+
 ## 2.35.35
 - Tableau des offres : refermer vite la fenêtre « Proposer une carte » (avant une seconde) faisait basculer sur le
   tableau du site. Le script note maintenant l'ouverture dès qu'elle se produit, et affiche aussitôt la fenêtre du site
