@@ -71,12 +71,6 @@ Tout en haut du fichier, l'objet `config_default` : délais entre requêtes (`ap
 limites par partenaire supposées (`fairPlay.pairGiftCap`, `fairPlay.pairFlowCap`), profondeur d'historique
 (`activity.historyDays`, `historyFirstPages`), taille des pages (`historyPageSize`).
 
-## Yuro Plus (yurocollection.fr)
-
-Le dépôt héberge aussi **Yuro Plus**, un second userscript, indépendant, pour le jeu yurocollection.fr
-([installer yuroPlus.user.js](https://raw.githubusercontent.com/xarregens/kyara-plus/main/yuroPlus.user.js)).
-Objectif : relancer le « replay auto » du mode farm quand un combat reste bloqué. Versions : `CHANGELOG-yuro.md`.
-
 ## Historique des versions
 
 Voir `CHANGELOG.md`.
