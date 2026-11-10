@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.35
+// @version      2.35.36
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -857,6 +857,94 @@
   function gainBadge(gain) {
     const tone2 = !gain ? "flat" : gain > 0 ? "up" : "down";
     return h("span", { class: `kp-gain kp-gain--${tone2}`, title: "Écart de prix moyen" }, formatGain(gain));
+  }
+  // Loss confirmation window, shown before "Donner" accepts a losing trade; the board chip can turn it off
+  var LOSS_CONFIRM_SETTING = "lossConfirm";
+  var readLossConfirm = () => readSetting(LOSS_CONFIRM_SETTING, true) !== false;
+  function confirmLossDialog({ received, receivedPrice }, option) {
+    return new Promise((resolve) => {
+      const previousFocus = document.activeElement;
+      const side = (label, card, price) => h(
+        "div",
+        { class: "kp-confirm__side" },
+        h("span", { class: "kp-label" }, label),
+        h(
+          "span",
+          { class: "kp-art kp-art--md", style: { "--kp-rarity": rarityColor(card.rarity) } },
+          h("img", {
+            src: cardImageUrl(card.id),
+            alt: card.name,
+            referrerpolicy: "no-referrer",
+            onError: (event) => {
+              if (card.image && event.target.src !== card.image) event.target.src = card.image;
+            }
+          })
+        ),
+        h("strong", { class: "kp-name", title: card.name }, card.name),
+        h("span", { class: "kp-price" }, formatPrice(price))
+      );
+      const cancel = h("button", { class: "kp-btn kp-btn--ghost", type: "button" }, "Annuler");
+      const confirm = h("button", { class: "kp-btn kp-btn--danger", type: "button" }, "Donner quand même");
+      const root = h(
+        "div",
+        { class: "kp-modal" },
+        h(
+          "section",
+          { class: "kp-confirm", role: "alertdialog", "aria-modal": "true", "aria-labelledby": "kp-confirm-title" },
+          h(
+            "header",
+            { class: "kp-confirm__head" },
+            h("span", { class: "kp-confirm__icon" }, icon("triangle-exclamation")),
+            h(
+              "div",
+              {},
+              h("h2", { class: "kp-title", id: "kp-confirm-title" }, "Échange à perte"),
+              h("p", { class: "kp-muted" }, "La carte que tu donnes vaut plus que celle que tu reçois.")
+            )
+          ),
+          h(
+            "div",
+            { class: "kp-confirm__trade" },
+            side("Tu reçois", received, receivedPrice),
+            swapIcon(),
+            side("Tu donnes", option.card, option.price)
+          ),
+          h(
+            "div",
+            { class: "kp-confirm__loss" },
+            h("span", { class: "kp-label" }, "Perte estimée"),
+            h("span", { class: "kp-gain kp-gain--down kp-confirm__amount" }, `${formatGain(option.gain)} ◆`)
+          ),
+          h("footer", { class: "kp-confirm__foot" }, cancel, confirm)
+        )
+      );
+      const order = [cancel, confirm];
+      const close = (result) => {
+        document.removeEventListener("keydown", onKeydown, true);
+        root.remove();
+        previousFocus?.focus?.();
+        resolve(result);
+      };
+      function onKeydown(event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          close(false);
+        } else if (event.key === "Tab") {
+          event.preventDefault();
+          const index = order.indexOf(document.activeElement);
+          order[index === -1 ? 0 : (index + (event.shiftKey ? order.length - 1 : 1)) % order.length].focus();
+        }
+      }
+      cancel.addEventListener("click", () => close(false));
+      confirm.addEventListener("click", () => close(true));
+      root.addEventListener("click", (event) => {
+        if (event.target === root) close(false);
+      });
+      document.addEventListener("keydown", onKeydown, true);
+      document.body.append(root);
+      cancel.focus();
+    });
   }
   function giveButton(option, onClick, className = "", attributes = {}) {
     const tone2 = option.entry.qty >= 2 ? "double" : "single";
@@ -5125,7 +5213,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.35";
+  var SURVEY_VERSION = "2.35.36";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5714,7 +5802,10 @@ Continuer ?`);
       fairPlayApi.prices([analysis.received.id, card.id]).then((fairPrices) => updateFairAction(actionId, { fairPrices })).catch(() => {
       });
     }
+    // Loss confirmation: protects against misclicks when the known gain is negative; manual clicks only, never auto-accept
+    const confirmLoss = (analysis, option) => option.gain != null && option.gain < 0 && readLossConfirm() ? confirmLossDialog(analysis, option) : Promise.resolve(true);
     async function give(analysis, option) {
+      if (!await confirmLoss(analysis, option)) return;
       try {
         await takeOffer(analysis, option);
       } catch (error) {
@@ -5892,6 +5983,22 @@ Continuer ?`);
       return side;
     });
     const lossChip = h("div", { class: "kp-chip-pair", role: "group", "aria-label": "Pertes" }, lossSides);
+    // Behaviour chip, not a filter: while lit, "Donner" on a losing trade first opens a confirmation window
+    const confirmChip = h(
+      "button",
+      {
+        class: "kp-chip",
+        type: "button",
+        "aria-pressed": String(readLossConfirm()),
+        title: "Quand c’est allumé, une fenêtre demande confirmation avant d’accepter un échange à perte (gain négatif d’après les prix moyens). Éteins pour donner directement, sans fenêtre."
+      },
+      "Confirmer les pertes"
+    );
+    confirmChip.addEventListener("click", () => {
+      const next = !readLossConfirm();
+      writeSetting(LOSS_CONFIRM_SETTING, next);
+      confirmChip.setAttribute("aria-pressed", String(next));
+    });
     const rarityChips = [...RARITIES].reverse().map((rarity) => {
       const chip = h(
         "button",
@@ -5946,6 +6053,7 @@ Continuer ?`);
         searchInput,
         filterChips,
         lossChip,
+        confirmChip,
         h("div", { class: "kp-field kp-filters__rarities", role: "group", "aria-label": "Raretés" }, rarityChips)
       ),
       list
@@ -9836,6 +9944,22 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-auto__summary.is-empty { border-left-color: var(--mut); background: color-mix(in srgb, var(--mut) 10%, transparent); color: var(--fg2); }
 .kp-survey { flex: none; padding: 2px 8px; font-size: 11px; }
 .kp-survey:disabled { opacity: 0.6; cursor: progress; }
+/* Loss confirmation window ("Donner" on a losing trade); the "Confirmer les pertes" chip on the board turns it off */
+.kp-btn--danger { background: var(--danger); color: #fff; }
+.kp-btn--danger:hover { background: var(--danger); filter: brightness(1.15); }
+.kp-confirm { display: flex; flex-direction: column; gap: var(--s-4); width: min(460px, 100%); padding: var(--s-5, 24px); border: 1px solid var(--line2); border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--sh-1); color: var(--fg); animation: kp-confirm-in 0.15s ease-out; }
+@keyframes kp-confirm-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.kp-confirm__head { display: flex; align-items: center; gap: var(--s-3); }
+.kp-confirm__head .kp-muted { margin-top: 2px; }
+.kp-confirm__icon { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent); border-radius: 50%; background: color-mix(in srgb, var(--danger) 14%, transparent); color: var(--danger); font-size: 18px; }
+.kp-confirm__trade { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: var(--s-3); padding: var(--s-3); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--panel2); }
+.kp-confirm__side { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; text-align: center; }
+.kp-confirm__side .kp-art { width: 96px; }
+.kp-confirm__side .kp-name { max-width: 100%; white-space: normal; }
+.kp-confirm__loss { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.kp-confirm__amount { padding: 4px 12px; font-size: var(--t-base); font-weight: 700; }
+.kp-confirm__foot { display: flex; gap: var(--s-2); }
+.kp-confirm__foot .kp-btn { flex: 1; padding: 10px 12px; }
 `);
   installFairLogConsole();
   fairSurvey = installFairSurveyConsole();
