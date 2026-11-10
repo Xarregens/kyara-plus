@@ -18,7 +18,9 @@ avant d'envoyer, ne jamais toucher au vrai site autrement qu'en lecture.
 - Fins de ligne : le fichier du dépôt est en LF. Le propriétaire l'installe via Tampermonkey depuis l'URL Raw.
 - Version : `// @version` (2.35.x) **et** `var SURVEY_VERSION` à incrémenter à chaque publication. Garder les URL
   `@updateURL` / `@downloadURL` vers ce dépôt, sinon Tampermonkey irait chercher le script d'origine de Myuki.
-- Publier = commit sur `main` ; Tampermonkey met à jour les utilisateurs automatiquement.
+- Publier = commit sur `main` ; Tampermonkey met à jour les utilisateurs automatiquement (cache GitHub ≈ 5 min ;
+  pour forcer : ouvrir l'URL Raw dans un onglet, Ctrl+F5 au besoin). Si la session impose une branche de travail,
+  committer dessus puis fusionner en avance rapide sur `main` et pousser les deux.
 
 ## Vérifier
 
