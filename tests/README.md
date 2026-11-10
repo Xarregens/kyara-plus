@@ -36,6 +36,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `autoexpand3.cjs` | Collection (albums) | Chargement automatique des paquets quand des filtres sont actifs, sans clignotement. |
 | `survey.cjs` | Mon activité | Commande console `kyaraPlusReleve` (relevé fair-play). |
 | `series.cjs` | Missions / Collection | Commande console `kyaraPlusSeries` (relevé séries), masquage des e-mails. |
+| `yuro.cjs` | Yuro Plus (yurocollection.fr) | Commandes `yuroDiag` : requêtes notées en continu (masquage), enregistrement, photo immédiate, WebSocket. Lancer avec `../yuroPlus.user.js`. |
 
 Les formes des réponses API simulées (offres, collection, fair-play, historique, progress) sont dans chaque script :
 elles ont été déduites des vraies réponses observées (relevés `kyaraPlusReleve` / `kyaraPlusSeries`).

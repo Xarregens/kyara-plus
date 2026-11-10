@@ -1,7 +1,9 @@
 # Kyara Plus — notes pour Claude Code
 
-Ce dépôt contient **un seul programme** : `kyaraPlus.user.js`, un userscript Tampermonkey pour le jeu de cartes
-kyara.games. Le propriétaire (Xarregens) n'est pas développeur : parler simplement, livrer des versions complètes, tester
+Ce dépôt contient deux userscripts Tampermonkey indépendants : `kyaraPlus.user.js` (le programme principal, jeu de
+cartes kyara.games, tout ce qui suit le concerne) et `yuroPlus.user.js` (jeu yurocollection.fr, naissant : versions dans
+`CHANGELOG-yuro.md`, commandes `yuroDiag`, test `tests/yuro.cjs` ; `// @version` et `YURO_VERSION` à incrémenter à
+chaque publication, même installation par l'URL Raw). Le propriétaire (Xarregens) n'est pas développeur : parler simplement, livrer des versions complètes, tester
 avant d'envoyer, ne jamais toucher au vrai site autrement qu'en lecture.
 
 ## Le fichier
