@@ -1,6 +1,6 @@
 // Auto-accept : « Ou si elle me manque, perte ≤ X ». Décochée (défaut) : aucune perte acceptée, même par une règle de
 // rareté sans seuil. Cochée : une carte qui me manque est prise si la perte ne dépasse pas X, une seule fois par carte,
-// jamais une carte déjà possédée, jamais une perte plus grosse.
+// jamais une carte déjà possédée, jamais une perte plus grosse, et le seuil « gain ≥ » d'une ligne reste valable.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const script = fs.readFileSync(process.argv[2], 'utf8');
@@ -8,13 +8,13 @@ const accepted = [];
 const card = (id, rarity, price) => ({ id, name: `Perso ${id}`, rarity, series: 'Serie', image: '', price });
 const cards = [
   // reçues
-  card('A', 'R', 1000), card('B', 'R', 1000), card('C', 'R', 1000), card('D', 'E', 1000), card('G', 'R', 1000),
+  card('H', 'M', 20000), card('A', 'R', 1000), card('B', 'R', 1000), card('C', 'R', 1000), card('D', 'E', 1000), card('G', 'R', 1000),
   // à donner (toutes en double)
-  card('X', 'R', 1003), card('Y', 'R', 1050), card('Z', 'R', 1002), card('W', 'R', 1001), card('V', 'U', 1020), card('Q', 'R', 900),
+  card('X', 'R', 1003), card('Y', 'R', 1050), card('Z', 'R', 1002), card('W', 'R', 1001), card('V', 'U', 1020), card('Q', 'R', 900), card('P', 'M', 20003),
 ];
 const characters = cards.map(({ price, ...c }) => c);
 const priceOf = Object.fromEntries(cards.map((c) => [c.id, c.price]));
-const collection = ['X', 'Y', 'Z', 'W', 'V', 'Q'].map((id) => ({ characterId: id, qty: 3, listable: 3, pinned: false }))
+const collection = ['X', 'Y', 'Z', 'W', 'V', 'Q', 'P'].map((id) => ({ characterId: id, qty: 3, listable: 3, pinned: false }))
   .concat([{ characterId: 'C', qty: 1, listable: 1, pinned: false }]);
 const offer = (id, receive, give, user) => ({ id, status: 'open', characterId: receive, wantIds: [give], user: { id: user, pseudo: user }, expiresAt: new Date(Date.now() + 864e5).toISOString() });
 const offers = [
@@ -24,6 +24,7 @@ const offers = [
   offer('o4', 'A', 'W', 'u4'), // même carte manquante que o1, perte 1
   offer('o5', 'D', 'V', 'u5'), // manque, U → E (règle de rareté), perte 20
   offer('o6', 'G', 'Q', 'u6'), // manque, gain +100
+  offer('o7', 'H', 'P', 'u7'), // Mythique manquante contre une Mythique en double, perte 3
 ];
 const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDays: 2, pairDays: 2, freeRatio: 2, ignoreBelow: 100, maxMargin: 10000, minPrice: 0 };
 (async () => {
@@ -76,6 +77,8 @@ const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDa
 
   // 1. toutes les règles de rareté, pas de perte permise : seule l'offre gagnante o6 est prise
   await page.click('.kp-auto__shortcut:has-text("tout")'); await page.waitForTimeout(100);
+  const MYTHIC_FLOOR = '.kp-rule-row__gain[aria-label="Gain minimum quand je donne une Mythique"]';
+  await page.fill(MYTHIC_FLOOR, '200'); await page.waitForTimeout(100);
   await run();
   out.phase1 = [...accepted];
   check('noLossByDefault', accepted.length === 1 && accepted[0] === 'o6');
@@ -94,6 +97,13 @@ const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDa
   out.phase3 = accepted.slice(2);
   check('biggerLimit', out.phase3.length === 1 && out.phase3[0] === 'o5');
   check('neverOwnedOrTooBig', !accepted.includes('o2') && !accepted.includes('o3'));
+  check('rowFloorKept', !accepted.includes('o7'));
+
+  // 4. seuil de la ligne Mythique vidé : la Mythique manquante (perte 3) part
+  await page.fill(MYTHIC_FLOOR, ''); await page.waitForTimeout(100);
+  await run();
+  out.phase4 = accepted.slice(3);
+  check('noFloorLossAllowed', out.phase4.length === 1 && out.phase4[0] === 'o7');
 
   out.accepted = accepted;
   out.errors = errors;

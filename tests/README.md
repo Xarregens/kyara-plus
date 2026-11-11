@@ -33,7 +33,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `autopanel.cjs` | Auto-accept | Lignes par rareté, pastilles, tout / rien, gain global, doublons, seuil par ligne. |
 | `autofair.cjs` | Auto-accept | Carte la plus rentable qui passe le fair-play (pas la plus rentable tout court), retentative avec la carte suivante après un refus du site, offre impossible jamais tentée ; « Ou si gain ≥ » prend le dernier exemplaire et une carte déjà possédée. |
 | `autolog.cjs` | Auto-accept | Gain estimé sur chaque ligne « Acceptés », total depuis l'activation (détail par rareté en infobulle), mémorisé au rechargement, remis à zéro par « Activer ». |
-| `autoloss.cjs` | Auto-accept | « Ou si elle me manque, perte ≤ X » : décochée par défaut, aucune perte acceptée (même par une règle de rareté sans seuil) ; cochée, petite perte prise pour une carte manquante, une seule fois par carte, jamais une carte possédée ni une perte au-delà de X. |
+| `autoloss.cjs` | Auto-accept | « Ou si elle me manque, perte ≤ X » : décochée par défaut, aucune perte acceptée (même par une règle de rareté sans seuil) ; cochée, petite perte prise pour une carte manquante, une seule fois par carte, jamais une carte possédée ni une perte au-delà de X ; le seuil « gain ≥ » d'une ligne (ex. Mythique ≥ 200) reste valable. |
 | `claims2.cjs` | Collection (albums) | Badges « déjà réclamée » / « à réclamer », bouton « Masquer les déjà réclamées ». |
 | `autoexpand3.cjs` | Collection (albums) | Chargement automatique des paquets quand des filtres sont actifs, sans clignotement. |
 | `survey.cjs` | Mon activité | Commande console `kyaraPlusReleve` (relevé fair-play). |

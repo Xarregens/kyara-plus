@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.37
+// @version      2.35.38
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4845,8 +4845,10 @@ Continuer ?`);
     };
     const gainRule = (option) => minGain != null && option.gain != null && option.gain >= minGain;
     const rarityRule = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) && (!missingOnly || missing) && (!doublesOnly || isDouble(option));
-    // "Ou si elle me manque, perte ≤": a card I lack, any rarity, known prices, losing at most maxLoss (a gain passes too)
-    const lossRule = (option) => maxLoss != null && missing && option.gain != null && option.gain >= -maxLoss && (!doublesOnly || isDouble(option));
+    // "Ou si elle me manque, perte ≤": a card I lack, any rarity, known prices, losing at most maxLoss (a gain passes too);
+    // a row with its own floor keeps it ("I give a Mythic only for +200" stays true for the cards I lack)
+    const lossFloor = (option) => rowMinGain[option.card.rarity] ?? -maxLoss;
+    const lossRule = (option) => maxLoss != null && missing && option.gain != null && option.gain >= lossFloor(option) && (!doublesOnly || isDouble(option));
     const passes = (option) => !refused(option.card.id) && (!fair || passesFairPlay(analysis, option, fair));
     const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && (gainRule(option) || rarityRule(option) || lossRule(option)) && passes(option);
     // a double is preferred when several cards qualify
@@ -5222,7 +5224,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.37";
+  var SURVEY_VERSION = "2.35.38";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -6303,7 +6305,7 @@ Continuer ?`);
       ),
       h(
         "label",
-        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, une carte qui manque à ma collection, même si l’échange est à perte, tant que la perte (prix moyen de la carte donnée moins celui de la carte reçue) ne dépasse pas ce montant. Prix connus seulement, une seule fois par carte, et « Seulement mes doublons » s’applique. Décoché : l’auto-accept n’accepte jamais un échange à perte (sauf un seuil négatif mis sur une ligne)." },
+        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, une carte qui manque à ma collection, même si l’échange est à perte, tant que la perte (prix moyen de la carte donnée moins celui de la carte reçue) ne dépasse pas ce montant. Prix connus seulement, une seule fois par carte, et « Seulement mes doublons » s’applique. Une ligne qui a son propre seuil « gain ≥ » le garde : avec « gain ≥ 200 » sur la ligne Mythique, une Mythique n’est jamais donnée à perte. Décoché : l’auto-accept n’accepte jamais un échange à perte (sauf un seuil négatif mis sur une ligne)." },
         lossCheck,
         h("span", {}, "Ou si elle me manque, perte ≤"),
         lossInput,
