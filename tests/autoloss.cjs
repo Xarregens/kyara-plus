@@ -1,6 +1,8 @@
-// Auto-accept : « Ou si elle me manque, perte ≤ X ». Décochée (défaut) : aucune perte acceptée, même par une règle de
-// rareté sans seuil. Cochée : une carte qui me manque est prise si la perte ne dépasse pas X, une seule fois par carte,
-// jamais une carte déjà possédée, jamais une perte plus grosse, et le seuil « gain ≥ » d'une ligne reste valable.
+// Auto-accept : « Ou si elle me manque, perte ≤ X en donnant : (C)(U)(R)(E)(L)(M) ». Décochée (défaut) : aucune perte
+// acceptée, même par une règle de rareté sans seuil. Cochée : une carte qui me manque est prise si la perte ne dépasse pas
+// X, une seule fois par carte, jamais une carte déjà possédée, jamais une perte plus grosse, toujours avec un doublon
+// (même case « Seulement mes doublons » décochée), seulement pour les raretés allumées (L et M éteintes par défaut), et
+// sans tenir compte des seuils « gain ≥ » des lignes.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const script = fs.readFileSync(process.argv[2], 'utf8');
@@ -8,14 +10,16 @@ const accepted = [];
 const card = (id, rarity, price) => ({ id, name: `Perso ${id}`, rarity, series: 'Serie', image: '', price });
 const cards = [
   // reçues
-  card('H', 'M', 20000), card('A', 'R', 1000), card('B', 'R', 1000), card('C', 'R', 1000), card('D', 'E', 1000), card('G', 'R', 1000),
+  card('H', 'M', 20000), card('A', 'R', 1000), card('B', 'R', 1000), card('C', 'R', 1000), card('D', 'E', 1000), card('G', 'R', 1000), card('K', 'R', 1000),
   // à donner (toutes en double)
   card('X', 'R', 1003), card('Y', 'R', 1050), card('Z', 'R', 1002), card('W', 'R', 1001), card('V', 'U', 1020), card('Q', 'R', 900), card('P', 'M', 20003),
+  // à donner, un seul exemplaire
+  card('S', 'R', 1001),
 ];
 const characters = cards.map(({ price, ...c }) => c);
 const priceOf = Object.fromEntries(cards.map((c) => [c.id, c.price]));
 const collection = ['X', 'Y', 'Z', 'W', 'V', 'Q', 'P'].map((id) => ({ characterId: id, qty: 3, listable: 3, pinned: false }))
-  .concat([{ characterId: 'C', qty: 1, listable: 1, pinned: false }]);
+  .concat([{ characterId: 'C', qty: 1, listable: 1, pinned: false }, { characterId: 'S', qty: 1, listable: 1, pinned: false }]);
 const offer = (id, receive, give, user) => ({ id, status: 'open', characterId: receive, wantIds: [give], user: { id: user, pseudo: user }, expiresAt: new Date(Date.now() + 864e5).toISOString() });
 const offers = [
   offer('o1', 'A', 'X', 'u1'), // manque, perte 3
@@ -25,6 +29,7 @@ const offers = [
   offer('o5', 'D', 'V', 'u5'), // manque, U → E (règle de rareté), perte 20
   offer('o6', 'G', 'Q', 'u6'), // manque, gain +100
   offer('o7', 'H', 'P', 'u7'), // Mythique manquante contre une Mythique en double, perte 3
+  offer('o8', 'K', 'S', 'u8'), // manque, perte 1, mais avec mon dernier exemplaire
 ];
 const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDays: 2, pairDays: 2, freeRatio: 2, ignoreBelow: 100, maxMargin: 10000, minPrice: 0 };
 (async () => {
@@ -71,25 +76,31 @@ const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDa
     await page.click('.kp-auto__head .kp-btn:has-text("Arrêter")'); await page.waitForTimeout(200);
   };
 
-  // par défaut : case décochée, champ grisé à 5
-  out.initial = await page.evaluate((sel) => { const l = [...document.querySelectorAll('.kp-check')].find((e) => /Ou si elle me manque/.test(e.textContent)); return l && { checked: l.querySelector('.kp-check__box').checked, disabled: l.querySelector('.kp-input').disabled, value: l.querySelector('.kp-input').value }; });
-  check('defaultOff', out.initial?.checked === false && out.initial.disabled && out.initial.value === '5');
+  // par défaut : case décochée, champ et pastilles grisés, valeur 5, pastilles C U R E allumées, L M éteintes
+  const lossState = () => page.evaluate(() => { const l = [...document.querySelectorAll('.kp-check')].find((e) => /Ou si elle me manque/.test(e.textContent)); const chips = [...document.querySelectorAll('.kp-auto__loss-chip')]; return l && { checked: l.querySelector('.kp-check__box').checked, disabled: l.querySelector('.kp-input').disabled, value: l.querySelector('.kp-input').value, lit: chips.filter((c) => c.getAttribute('aria-pressed') === 'true').map((c) => c.textContent).join(''), chipsDisabled: chips.every((c) => c.disabled) }; });
+  out.initial = await lossState();
+  check('defaultOff', out.initial?.checked === false && out.initial.disabled && out.initial.value === '5' && out.initial.chipsDisabled);
+  check('defaultRarities', out.initial?.lit === 'CURE');
 
   // 1. toutes les règles de rareté, pas de perte permise : seule l'offre gagnante o6 est prise
   await page.click('.kp-auto__shortcut:has-text("tout")'); await page.waitForTimeout(100);
   const MYTHIC_FLOOR = '.kp-rule-row__gain[aria-label="Gain minimum quand je donne une Mythique"]';
   await page.fill(MYTHIC_FLOOR, '200'); await page.waitForTimeout(100);
+  // un seuil sur la ligne Rare et la case doublons décochée : la règle des pertes ne doit en tenir aucun compte
+  await page.fill('.kp-rule-row__gain[aria-label="Gain minimum quand je donne une Rare"]', '20'); await page.waitForTimeout(100);
+  await page.uncheck('.kp-check:has-text("Seulement mes doublons") .kp-check__box'); await page.waitForTimeout(100);
   await run();
   out.phase1 = [...accepted];
   check('noLossByDefault', accepted.length === 1 && accepted[0] === 'o6');
 
   // 2. perte ≤ 5 : une seule des deux offres de A (la moins chère, o4), ni B (−50), ni C (possédée), ni D (−20)
   await page.check(`${LOSS} .kp-check__box`); await page.waitForTimeout(100);
-  check('inputEnabledWhenOn', await page.isEnabled(`${LOSS} .kp-input`));
+  check('inputEnabledWhenOn', await page.isEnabled(`${LOSS} .kp-input`) && !(await lossState()).chipsDisabled);
   check('settingsSaved', await page.evaluate(() => { const s = JSON.parse(localStorage.getItem('kyara-plus:settings')); return s.autoLossEnabled === true && s.autoMaxLoss === 5; }));
   await run();
   out.phase2 = accepted.slice(1);
   check('smallLossOncePerCard', out.phase2.length === 1 && out.phase2[0] === 'o4');
+  check('lastCopyNeverGiven', !accepted.includes('o8'));
 
   // 3. perte ≤ 25 : D (−20) passe, B (−50) jamais, C (possédée) jamais, A déjà reçue
   await page.fill(`${LOSS} .kp-input`, '25'); await page.waitForTimeout(100);
@@ -97,13 +108,15 @@ const fair = { enabled: true, myReceivedLeft: 3000, myFreeLeft: 5000, receivedDa
   out.phase3 = accepted.slice(2);
   check('biggerLimit', out.phase3.length === 1 && out.phase3[0] === 'o5');
   check('neverOwnedOrTooBig', !accepted.includes('o2') && !accepted.includes('o3'));
-  check('rowFloorKept', !accepted.includes('o7'));
+  check('mythicOffByDefault', !accepted.includes('o7'));
 
-  // 4. seuil de la ligne Mythique vidé : la Mythique manquante (perte 3) part
-  await page.fill(MYTHIC_FLOOR, ''); await page.waitForTimeout(100);
+  // 4. pastille M allumée (le seuil Mythique de 200 reste en place) : la Mythique manquante (perte 3) part
+  await page.click('.kp-auto__loss-chip:has-text("M")'); await page.waitForTimeout(100);
+  check('raritiesSaved', await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).autoLossRarities.join('') === 'CUREM'));
   await run();
   out.phase4 = accepted.slice(3);
-  check('noFloorLossAllowed', out.phase4.length === 1 && out.phase4[0] === 'o7');
+  check('mythicWhenLit', out.phase4.length === 1 && out.phase4[0] === 'o7');
+  check('lastCopyStillNever', !accepted.includes('o8'));
 
   out.accepted = accepted;
   out.errors = errors;

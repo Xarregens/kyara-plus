@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.38
+// @version      2.35.39
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -57,6 +57,7 @@
       defaultMinGain: 1e3,
       // "Ou si elle me manque, perte ≤": value shown before the rule is first switched on (it stays off until then)
       defaultMaxLoss: 5,
+      defaultLossRarities: ["C", "U", "R", "E"],
       logLimit: 8
     },
     ledger: {
@@ -4828,7 +4829,7 @@ Continuer ?`);
   // fair: my bars and the limits with the partner when known; a card the site should refuse is then never chosen while
   // another passes (the most profitable passing card wins, like the yellow button of the side panel). Unknown bars =
   // no filter. refused(cardId): cards the site already refused for this offer (retried with the next one).
-  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {}, maxLoss = null, got = null }, fair = null, refused = () => false) {
+  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {}, maxLoss = null, lossRarities = null, got = null }, fair = null, refused = () => false) {
     // "only the cards I lack": an offer of a card I already own is never taken on its own; a card the auto-accept has just
     // received counts as owned even before the collection is read again (never two copies of the same missing card)
     const missing = analysis.owned === 0 && !got?.has(analysis.received.id);
@@ -4845,10 +4846,10 @@ Continuer ?`);
     };
     const gainRule = (option) => minGain != null && option.gain != null && option.gain >= minGain;
     const rarityRule = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) && (!missingOnly || missing) && (!doublesOnly || isDouble(option));
-    // "Ou si elle me manque, perte ≤": a card I lack, any rarity, known prices, losing at most maxLoss (a gain passes too);
-    // a row with its own floor keeps it ("I give a Mythic only for +200" stays true for the cards I lack)
-    const lossFloor = (option) => rowMinGain[option.card.rarity] ?? -maxLoss;
-    const lossRule = (option) => maxLoss != null && missing && option.gain != null && option.gain >= lossFloor(option) && (!doublesOnly || isDouble(option));
+    // "Ou si elle me manque, perte ≤ X en donnant : (C)(U)…": a card I lack, given one of my doubles (always, whatever the
+    // "Seulement mes doublons" box: giving my last copy at a loss for another missing card gains nothing), of a lit rarity,
+    // known prices, losing at most maxLoss (a gain passes too). The rows' "gain ≥" floors are for the rarity rules only.
+    const lossRule = (option) => maxLoss != null && missing && lossRarities?.has(option.card.rarity) && option.gain != null && option.gain >= -maxLoss && isDouble(option);
     const passes = (option) => !refused(option.card.id) && (!fair || passesFairPlay(analysis, option, fair));
     const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && (gainRule(option) || rarityRule(option) || lossRule(option)) && passes(option);
     // a double is preferred when several cards qualify
@@ -5224,7 +5225,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.38";
+  var SURVEY_VERSION = "2.35.39";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5383,6 +5384,8 @@ Continuer ?`);
     // losses for a card I lack: off until switched on, then up to maxLoss chakra per exchange
     lossEnabled: readSetting("autoLossEnabled", false),
     maxLoss: readSetting("autoMaxLoss", config_default.autoAccept.defaultMaxLoss),
+    // rarities that may be given at a loss (Legendary and Mythic off until lit)
+    lossRarities: new Set(readSetting("autoLossRarities", config_default.autoAccept.defaultLossRarities)),
     // per given rarity: minimum gain (received price − given price) for the rarity rules of that row; absent = no condition
     rowMinGain: readSetting("autoRowMinGain", {}),
     // what the auto-accept did since it was last switched on: the last exchanges and the running totals of their
@@ -5411,13 +5414,14 @@ Continuer ?`);
       byGive: { ...session.byGive, [given]: { count: row.count + 1, gain: row.gain + (known ? entry.gain : 0), unknown: row.unknown + (known ? 0 : 1) } }
     };
   }
-  var autoSettings = ({ rules, doublesOnly, missingOnly = false, gainEnabled, minGain, rowMinGain = {}, lossEnabled = false, maxLoss = 0 }, got = null) => ({
+  var autoSettings = ({ rules, doublesOnly, missingOnly = false, gainEnabled, minGain, rowMinGain = {}, lossEnabled = false, maxLoss = 0, lossRarities = /* @__PURE__ */ new Set() }, got = null) => ({
     rules,
     doublesOnly,
     missingOnly,
     minGain: gainEnabled ? minGain : null,
     rowMinGain,
-    maxLoss: lossEnabled ? Math.max(0, maxLoss) : null,
+    maxLoss: lossEnabled && lossRarities.size > 0 ? Math.max(0, maxLoss) : null,
+    lossRarities,
     got
   });
   function createAutoAccept(store, { take, currentAnalyses }) {
@@ -5542,6 +5546,15 @@ Continuer ?`);
       patch({ lossEnabled, maxLoss });
       drain();
     }
+    function toggleLossRarity(rarity) {
+      if (locked()) return;
+      const lossRarities = new Set(auto().lossRarities);
+      if (lossRarities.has(rarity)) lossRarities.delete(rarity);
+      else lossRarities.add(rarity);
+      writeSetting("autoLossRarities", [...lossRarities]);
+      patch({ lossRarities });
+      drain();
+    }
     function setRowMinGain(give, value) {
       if (locked()) return;
       const rowMinGain = { ...auto().rowMinGain };
@@ -5559,6 +5572,7 @@ Continuer ?`);
       setMissingOnly,
       setGainRule,
       setLossRule,
+      toggleLossRarity,
       setRowMinGain,
       stop: () => patch({ enabled: false })
     };
@@ -5873,7 +5887,8 @@ Continuer ?`);
       setAutoMissingOnly: auto.setMissingOnly,
       setAutoRowMinGain: auto.setRowMinGain,
       setAutoGainRule: auto.setGainRule,
-      setAutoLossRule: auto.setLossRule
+      setAutoLossRule: auto.setLossRule,
+      toggleAutoLossRarity: auto.toggleLossRarity
     };
   }
 
@@ -6176,7 +6191,7 @@ Continuer ?`);
     const parts = [];
     if (byGive.length) parts.push(`par rareté : ${byGive.join(" ; ")}`);
     if (auto.gainEnabled) parts.push(`tout échange dont le gain est d’au moins ${formatChakra(auto.minGain)}`);
-    if (auto.lossEnabled) parts.push(auto.maxLoss > 0 ? `toute carte qu’il me manque, même à perte jusqu’à ${formatChakra(auto.maxLoss)}` : "toute carte qu’il me manque, sans perte");
+    if (auto.lossEnabled && auto.lossRarities.size) parts.push(`toute carte qu’il me manque contre un de mes doublons (${GIVEN.filter((r) => auto.lossRarities.has(r)).map((r) => RARITY_LABELS[r]).join(" / ")}), même à perte jusqu’à ${formatChakra(auto.maxLoss)}`);
     if (!parts.length) return "Rien n’est coché : l’auto-accept n’acceptera rien.";
     const limits = [auto.doublesOnly ? "seulement avec mes doublons" : "même mon dernier exemplaire", auto.missingOnly ? "seulement les cartes qu’il me manque" : null, auto.lossEnabled || Object.values(auto.rowMinGain ?? {}).some((floor) => floor < 0) ? null : "jamais à perte"].filter(Boolean);
     return `Acceptera tout seul ${parts.join(", et ")}, ${limits.join(", ")}${auto.gainEnabled && (auto.doublesOnly || auto.missingOnly) ? " (sauf quand le gain est atteint)" : ""}.`;
@@ -6261,6 +6276,14 @@ Continuer ?`);
         controller.setAutoLossRule({ maxLoss: Number(event.target.value) || 0 });
       }
     });
+    const lossChips = GIVEN.map((rarity) => {
+      const chip = h(
+        "button",
+        { class: "kp-gem-chip kp-auto__loss-chip", type: "button", title: `Accepter de donner une ${RARITY_LABELS[rarity]} à perte`, style: { "--kp-rarity": rarityColor(rarity) }, onClick: () => controller.toggleAutoLossRarity(rarity) },
+        rarity
+      );
+      return [rarity, chip];
+    });
     const doublesCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     const missingCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     let enabled = false;
@@ -6275,6 +6298,7 @@ Continuer ?`);
       shortcuts.push(button);
       return button;
     };
+    const LOSS_TITLE = "Accepte aussi une carte qui te manque, même à perte, à trois conditions : tu donnes un de tes doublons (jamais ton dernier exemplaire, quelle que soit la case « Seulement mes doublons »), la carte donnée est d’une rareté allumée ci-dessous, et la perte (prix moyen donné moins prix moyen reçu) ne dépasse pas ce montant. Prix connus seulement, une seule fois par carte. Les seuils « gain ≥ » des lignes ne s’appliquent pas à cette règle. Décoché : l’auto-accept n’accepte jamais un échange à perte (sauf un seuil négatif mis sur une ligne).";
     const LOCKED_TITLE = "Arrête l’auto-accept pour modifier ses règles : elles sont figées tant qu’il tourne.";
     const rulesBlock = h(
       "div",
@@ -6305,11 +6329,17 @@ Continuer ?`);
       ),
       h(
         "label",
-        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, une carte qui manque à ma collection, même si l’échange est à perte, tant que la perte (prix moyen de la carte donnée moins celui de la carte reçue) ne dépasse pas ce montant. Prix connus seulement, une seule fois par carte, et « Seulement mes doublons » s’applique. Une ligne qui a son propre seuil « gain ≥ » le garde : avec « gain ≥ 200 » sur la ligne Mythique, une Mythique n’est jamais donnée à perte. Décoché : l’auto-accept n’accepte jamais un échange à perte (sauf un seuil négatif mis sur une ligne)." },
+        { class: "kp-check", title: LOSS_TITLE },
         lossCheck,
         h("span", {}, "Ou si elle me manque, perte ≤"),
         lossInput,
         h("span", { class: "kp-muted" }, "chakra")
+      ),
+      h(
+        "div",
+        { class: "kp-auto__loss-give", title: "Raretés que l’auto-accept peut donner à perte pour une carte qui te manque (allumées = permises). Les seuils « gain ≥ » des lignes ne comptent pas ici." },
+        h("span", { class: "kp-muted" }, "en donnant :"),
+        lossChips.map(([, chip]) => chip)
       ),
       h("label", { class: "kp-check", title: "Ne jamais donner le dernier exemplaire d’une carte (sauf si « Ou si gain ≥ » est atteint). Les cartes verrouillées ne sont jamais données, quoi qu’il arrive." }, doublesCheck, h("span", {}, "Seulement mes doublons")),
       h("label", { class: "kp-check", title: "N’accepter que les offres dont la carte reçue manque à ma collection : une carte que j’ai déjà, même en un seul exemplaire, n’est pas prise (sauf si « Ou si gain ≥ » est atteint)." }, missingCheck, h("span", {}, "Seulement les cartes qu’il me manque")),
@@ -6334,6 +6364,10 @@ Continuer ?`);
       lossCheck.disabled = enabled;
       lossInput.disabled = !auto.lossEnabled || enabled;
       if (document.activeElement !== lossInput) lossInput.value = String(auto.maxLoss);
+      for (const [rarity, chip] of lossChips) {
+        chip.setAttribute("aria-pressed", String(auto.lossRarities.has(rarity)));
+        chip.disabled = !auto.lossEnabled || enabled;
+      }
       // everything that defines what gets accepted is locked while it runs
       root.classList.toggle("kp-auto--locked", enabled);
       rulesBlock.title = enabled ? LOCKED_TITLE : "";
@@ -9997,6 +10031,9 @@ body.kp-albums-loading-state main .more { opacity: 0.35; pointer-events: none; t
 .kp-auto__summary.is-empty { border-left-color: var(--mut); background: color-mix(in srgb, var(--mut) 10%, transparent); color: var(--fg2); }
 .kp-survey { flex: none; padding: 2px 8px; font-size: 11px; }
 .kp-survey:disabled { opacity: 0.6; cursor: progress; }
+.kp-auto__loss-give { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: -2px 0 2px 24px; font-size: 11px; }
+.kp-auto__loss-chip { width: 22px; height: 22px; font-size: 10px; }
+.kp-auto__loss-chip:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 /* Loss confirmation window ("Donner" on a losing trade); the "Confirmer les pertes" chip on the board turns it off */
 .kp-btn--danger { background: var(--danger); color: #fff; }
 .kp-btn--danger:hover { background: var(--danger); filter: brightness(1.15); }

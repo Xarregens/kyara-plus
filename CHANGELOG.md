@@ -4,6 +4,14 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.39
+- Auto-accept, case « Ou si elle me manque, perte ≤ X » : elle a maintenant ses propres pastilles de rareté (« en donnant :
+  C U R E L M ») pour choisir ce qui peut être donné à perte ; Commune, Peu commune, Rare et Épique allumées par défaut,
+  Légendaire et Mythique éteintes. Les seuils « gain ≥ » des lignes ne s'appliquent plus à cette règle (en 2.35.38, un
+  seuil de 20 sur une ligne y bloquait toute perte) : ils restent réservés aux échanges rentables.
+- Cette règle ne donne plus jamais un dernier exemplaire, même si « Seulement mes doublons » est décochée (avant, elle
+  suivait cette case). Infobulle réécrite.
+
 ## 2.35.38
 - Auto-accept : la case « Ou si elle me manque, perte ≤ X » respecte maintenant le seuil « gain ≥ » de chaque ligne. Une
   ligne avec un seuil le garde, même pour une carte manquante (ex. « gain ≥ 200 » sur la ligne Mythique : jamais une
