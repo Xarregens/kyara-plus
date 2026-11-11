@@ -4,6 +4,15 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.37
+- Auto-accept : nouvelle case « Ou si elle me manque, perte ≤ X chakra ». Cochée, l'auto-accept prend aussi une carte qui
+  manque à la collection, quelle que soit la rareté, même à perte, tant que la perte ne dépasse pas X (prix moyens
+  connus seulement, « Seulement mes doublons » respecté, une seule fois par carte : jamais deux exemplaires de la même
+  carte manquante). Décochée par défaut (5 proposé).
+- Auto-accept : sans cette case, plus aucune perte n'est acceptée. Avant, une règle de rareté sans seuil (ex. donner une
+  Peu commune pour une Épique) acceptait l'échange même quand la carte donnée valait plus cher. Un seuil négatif sur une
+  ligne (ex. -5) reste possible pour autoriser une petite perte sur cette ligne.
+
 ## 2.35.36
 - Tableau des offres : avant d'accepter un échange à perte (la carte donnée vaut plus que la carte reçue, d'après les
   prix moyens), une fenêtre demande confirmation : les deux cartes, la perte estimée, « Annuler » ou « Donner quand

@@ -62,8 +62,8 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   await page.waitForFunction(() => /\d+ offres?$/.test(document.querySelector('.kp-board .kp-muted')?.textContent ?? ''), null, { timeout: 30000 });
   await page.click('.kp-side__tabs [role="tab"]:has-text("Auto-accept")');
   await page.waitForFunction(() => document.querySelector('.kp-bar__value') !== null, null, { timeout: 15000 }).catch(() => {});
-  await page.check('.kp-check__box >> nth=0'); await page.fill('.kp-check .kp-input', '1'); await page.waitForTimeout(100);
-  await page.check('.kp-check__box >> nth=1'); await page.check('.kp-check__box >> nth=2'); await page.waitForTimeout(100);
+  await page.check('.kp-check:has-text("Ou si gain") .kp-check__box'); await page.fill('.kp-check:has-text("Ou si gain") .kp-input', '1'); await page.waitForTimeout(100);
+  await page.check('.kp-check:has-text("Seulement mes doublons") .kp-check__box'); await page.check('.kp-check:has-text("Seulement les cartes") .kp-check__box'); await page.waitForTimeout(100);
   await page.click('.kp-auto__head .kp-btn:has-text("Activer")');
   await page.waitForFunction(() => document.querySelectorAll('.kp-deal--auto').length >= 4, null, { timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(2500);

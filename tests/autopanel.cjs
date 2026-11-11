@@ -47,7 +47,7 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
     summary: null,
     toggle: { text: document.querySelector('.kp-auto__head .kp-btn').textContent, disabled: document.querySelector('.kp-auto__head .kp-btn').disabled },
     gain: { checked: document.querySelectorAll('.kp-check__box')[0].checked, inputDisabled: document.querySelector('.kp-check .kp-input').disabled, value: document.querySelector('.kp-check .kp-input').value },
-    doubles: document.querySelectorAll('.kp-check__box')[1].checked,
+    doubles: [...document.querySelectorAll('.kp-check')].find((l) => /Seulement mes doublons/.test(l.textContent)).querySelector('.kp-check__box').checked,
     sections: [...document.querySelectorAll('.kp-auto__subtitle')].map((e) => e.textContent + (e.hidden ? ' (caché)' : '')),
   }));
   const out = {};
@@ -58,9 +58,9 @@ const fair = { enabled: true, myReceivedLeft: 1200, myFreeLeft: 4000, receivedDa
   out.afterAll = { pressed: await page.evaluate(() => document.querySelectorAll('.kp-rule-chip[aria-pressed="true"]').length), total: await page.evaluate(() => document.querySelectorAll('.kp-rule-chip').length) };
   await page.click('.kp-auto__shortcut:has-text("rien")'); await page.waitForTimeout(100);
   out.afterNone = { toggleDisabled: (await read()).toggle.disabled };
-  await page.check('.kp-check__box >> nth=0'); await page.waitForTimeout(100);
-  await page.fill('.kp-check .kp-input', '2500'); await page.waitForTimeout(100);
-  await page.uncheck('.kp-check__box >> nth=1'); await page.waitForTimeout(100);
+  await page.check('.kp-check:has-text("Ou si gain") .kp-check__box'); await page.waitForTimeout(100);
+  await page.fill('.kp-check:has-text("Ou si gain") .kp-input', '2500'); await page.waitForTimeout(100);
+  await page.uncheck('.kp-check:has-text("Seulement mes doublons") .kp-check__box'); await page.waitForTimeout(100);
   out.afterGain = await read();
   await page.screenshot({ path: 'shot-auto.png', clip: { x: 0, y: 0, width: 1600, height: 1000 } });
   out.errors = errors;

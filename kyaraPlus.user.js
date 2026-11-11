@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.36
+// @version      2.35.37
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -55,6 +55,8 @@
       maxPerMinute: 10,
       gapMs: 1500,
       defaultMinGain: 1e3,
+      // "Ou si elle me manque, perte ≤": value shown before the rule is first switched on (it stays off until then)
+      defaultMaxLoss: 5,
       logLimit: 8
     },
     ledger: {
@@ -4826,25 +4828,32 @@ Continuer ?`);
   // fair: my bars and the limits with the partner when known; a card the site should refuse is then never chosen while
   // another passes (the most profitable passing card wins, like the yellow button of the side panel). Unknown bars =
   // no filter. refused(cardId): cards the site already refused for this offer (retried with the next one).
-  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {} }, fair = null, refused = () => false) {
-    // "only the cards I lack": an offer of a card I already own is never taken on its own
+  function autoAcceptOption(analysis, { rules, doublesOnly, missingOnly = false, minGain, rowMinGain = {}, maxLoss = null, got = null }, fair = null, refused = () => false) {
+    // "only the cards I lack": an offer of a card I already own is never taken on its own; a card the auto-accept has just
+    // received counts as owned even before the collection is read again (never two copies of the same missing card)
+    const missing = analysis.owned === 0 && !got?.has(analysis.received.id);
     // "Ou si gain ≥": a gain reaching it is taken whatever the rarity, even with my last copy or a card I already own
     // a rarity rule also needs the row's minimum gain when one is set (an Epic can be worth more than a Legendary); unknown price = no
     // same rarity (E for E): only with a known gain reaching the row's floor, or at least 0 when the row has none
+    // no floor between two rarities: an unknown price passes, a known loss never does (a loss is only taken when asked for:
+    // a negative floor on the row, or the missing-card rule below)
     const rowGainOk = (option) => {
       const same = option.card.rarity === analysis.received.rarity;
-      const floor = rowMinGain[option.card.rarity] ?? (same ? 0 : null);
-      return floor == null || option.gain != null && option.gain >= floor;
+      const floor = rowMinGain[option.card.rarity] ?? null;
+      if (floor != null) return option.gain != null && option.gain >= floor;
+      return option.gain == null ? !same : option.gain >= 0;
     };
     const gainRule = (option) => minGain != null && option.gain != null && option.gain >= minGain;
-    const rarityRule = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) && (!missingOnly || analysis.owned === 0) && (!doublesOnly || isDouble(option));
+    const rarityRule = (option) => rules.has(ruleKey(option.card.rarity, analysis.received.rarity)) && rowGainOk(option) && (!missingOnly || missing) && (!doublesOnly || isDouble(option));
+    // "Ou si elle me manque, perte ≤": a card I lack, any rarity, known prices, losing at most maxLoss (a gain passes too)
+    const lossRule = (option) => maxLoss != null && missing && option.gain != null && option.gain >= -maxLoss && (!doublesOnly || isDouble(option));
     const passes = (option) => !refused(option.card.id) && (!fair || passesFairPlay(analysis, option, fair));
-    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && (gainRule(option) || rarityRule(option)) && passes(option);
+    const matches2 = (option) => option.status === GiveStatus.AVAILABLE && !option.entry.pinned && (gainRule(option) || rarityRule(option) || lossRule(option)) && passes(option);
     // a double is preferred when several cards qualify
     const double = bestOption(analysis.options, (option) => matches2(option) && isDouble(option));
     return double ?? bestOption(analysis.options, matches2);
   }
-  var hasAutoRule = ({ rules, minGain }) => rules.size > 0 || minGain != null;
+  var hasAutoRule = ({ rules, minGain, maxLoss = null }) => rules.size > 0 || minGain != null || maxLoss != null;
   function autoAcceptCandidates(analyses, settings, fair = null, refused = () => false) {
     if (!hasAutoRule(settings)) return [];
     return analyses.flatMap((analysis) => {
@@ -5213,7 +5222,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.36";
+  var SURVEY_VERSION = "2.35.37";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -5369,6 +5378,9 @@ Continuer ?`);
     missingOnly: readSetting("autoMissingOnly", false),
     gainEnabled: readSetting("autoGainEnabled", false),
     minGain: readSetting("autoMinGain", config_default.autoAccept.defaultMinGain),
+    // losses for a card I lack: off until switched on, then up to maxLoss chakra per exchange
+    lossEnabled: readSetting("autoLossEnabled", false),
+    maxLoss: readSetting("autoMaxLoss", config_default.autoAccept.defaultMaxLoss),
     // per given rarity: minimum gain (received price − given price) for the rarity rules of that row; absent = no condition
     rowMinGain: readSetting("autoRowMinGain", {}),
     // what the auto-accept did since it was last switched on: the last exchanges and the running totals of their
@@ -5397,12 +5409,14 @@ Continuer ?`);
       byGive: { ...session.byGive, [given]: { count: row.count + 1, gain: row.gain + (known ? entry.gain : 0), unknown: row.unknown + (known ? 0 : 1) } }
     };
   }
-  var autoSettings = ({ rules, doublesOnly, missingOnly = false, gainEnabled, minGain, rowMinGain = {} }) => ({
+  var autoSettings = ({ rules, doublesOnly, missingOnly = false, gainEnabled, minGain, rowMinGain = {}, lossEnabled = false, maxLoss = 0 }, got = null) => ({
     rules,
     doublesOnly,
     missingOnly,
     minGain: gainEnabled ? minGain : null,
-    rowMinGain
+    rowMinGain,
+    maxLoss: lossEnabled ? Math.max(0, maxLoss) : null,
+    got
   });
   function createAutoAccept(store, { take, currentAnalyses }) {
     const tried = /* @__PURE__ */ new Set();
@@ -5410,6 +5424,8 @@ Continuer ?`);
     const refusedCards = /* @__PURE__ */ new Set();
     const refused = (offerId, cardId) => refusedCards.has(`${offerId}:${cardId}`);
     const acceptedAt = [];
+    // cards the auto-accept received during this visit: no longer "missing", whatever the collection says
+    const got = /* @__PURE__ */ new Set();
     let running = false;
     const auto = () => store.get().auto;
     const patch = (changes) => store.set({ auto: { ...auto(), ...changes } });
@@ -5420,7 +5436,7 @@ Continuer ?`);
         await sleep(acceptedAt[0] + MINUTE_MS - Date.now());
       }
     }
-    const nextCandidate = () => autoAcceptCandidates(currentAnalyses(), autoSettings(auto()), store.get().fair ?? null, refused).find((deal) => !tried.has(deal.analysis.offer.id));
+    const nextCandidate = () => autoAcceptCandidates(currentAnalyses(), autoSettings(auto(), got), store.get().fair ?? null, refused).find((deal) => !tried.has(deal.analysis.offer.id));
     function stop(reason) {
       patch({ enabled: false, stopReason: reason });
       toast(`Auto-accept arrêté : ${reason}`, "error");
@@ -5435,7 +5451,7 @@ Continuer ?`);
       const offerId = analysis.offer.id;
       const alreadyRetried = [...refusedCards].some((key) => key.startsWith(`${offerId}:`));
       refusedCards.add(`${offerId}:${option.card.id}`);
-      const next = alreadyRetried ? null : autoAcceptOption(analysis, autoSettings(auto()), store.get().fair ?? null, (cardId) => refused(offerId, cardId));
+      const next = alreadyRetried ? null : autoAcceptOption(analysis, autoSettings(auto(), got), store.get().fair ?? null, (cardId) => refused(offerId, cardId));
       if (next) {
         tried.delete(offerId);
         return;
@@ -5454,6 +5470,7 @@ Continuer ?`);
         return;
       }
       acceptedAt.push(Date.now());
+      got.add(analysis.received.id);
       const entry = { id: analysis.offer.id, received: analysis.received, given: option.card, at: Date.now(), gain: option.gain ?? null, receivedPrice: analysis.receivedPrice ?? null, givenPrice: option.price ?? null };
       const next = { log: [entry, ...auto().log].slice(0, config_default.autoAccept.logLimit), session: addToAutoSession(auto().session, entry) };
       writeAutoSession(next);
@@ -5516,6 +5533,13 @@ Continuer ?`);
       patch({ gainEnabled, minGain });
       drain();
     }
+    function setLossRule({ lossEnabled = auto().lossEnabled, maxLoss = auto().maxLoss }) {
+      if (locked()) return;
+      writeSetting("autoLossEnabled", lossEnabled);
+      writeSetting("autoMaxLoss", maxLoss);
+      patch({ lossEnabled, maxLoss });
+      drain();
+    }
     function setRowMinGain(give, value) {
       if (locked()) return;
       const rowMinGain = { ...auto().rowMinGain };
@@ -5532,6 +5556,7 @@ Continuer ?`);
       setDoublesOnly,
       setMissingOnly,
       setGainRule,
+      setLossRule,
       setRowMinGain,
       stop: () => patch({ enabled: false })
     };
@@ -5845,7 +5870,8 @@ Continuer ?`);
       setAutoDoublesOnly: auto.setDoublesOnly,
       setAutoMissingOnly: auto.setMissingOnly,
       setAutoRowMinGain: auto.setRowMinGain,
-      setAutoGainRule: auto.setGainRule
+      setAutoGainRule: auto.setGainRule,
+      setAutoLossRule: auto.setLossRule
     };
   }
 
@@ -6148,8 +6174,9 @@ Continuer ?`);
     const parts = [];
     if (byGive.length) parts.push(`par rareté : ${byGive.join(" ; ")}`);
     if (auto.gainEnabled) parts.push(`tout échange dont le gain est d’au moins ${formatChakra(auto.minGain)}`);
+    if (auto.lossEnabled) parts.push(auto.maxLoss > 0 ? `toute carte qu’il me manque, même à perte jusqu’à ${formatChakra(auto.maxLoss)}` : "toute carte qu’il me manque, sans perte");
     if (!parts.length) return "Rien n’est coché : l’auto-accept n’acceptera rien.";
-    const limits = [auto.doublesOnly ? "seulement avec mes doublons" : "même mon dernier exemplaire", auto.missingOnly ? "seulement les cartes qu’il me manque" : null].filter(Boolean);
+    const limits = [auto.doublesOnly ? "seulement avec mes doublons" : "même mon dernier exemplaire", auto.missingOnly ? "seulement les cartes qu’il me manque" : null, auto.lossEnabled || Object.values(auto.rowMinGain ?? {}).some((floor) => floor < 0) ? null : "jamais à perte"].filter(Boolean);
     return `Acceptera tout seul ${parts.join(", et ")}, ${limits.join(", ")}${auto.gainEnabled && (auto.doublesOnly || auto.missingOnly) ? " (sauf quand le gain est atteint)" : ""}.`;
   }
   function createAutoPanel(controller) {
@@ -6180,7 +6207,7 @@ Continuer ?`);
         inputmode: "numeric",
         placeholder: "—",
         "aria-label": `Gain minimum quand je donne une ${RARITY_LABELS[give]}`,
-        title: `Pour cette ligne, n’accepter que si le gain (prix moyen de la carte reçue moins celui de la carte donnée) atteint ce montant. Vide = pas de condition. Une carte au prix inconnu n’est alors jamais donnée.`,
+        title: `Pour cette ligne, n’accepter que si le gain (prix moyen de la carte reçue moins celui de la carte donnée) atteint ce montant ; un nombre négatif (ex. -5) autorise une petite perte. Vide = jamais à perte. Avec un seuil, une carte au prix inconnu n’est jamais donnée.`,
         onInput: (event) => {
           event.target.value = event.target.value.replace(/[^\d-]/g, "").replace(/(?!^)-/g, "");
           const text = event.target.value;
@@ -6221,11 +6248,23 @@ Continuer ?`);
         controller.setAutoGainRule({ minGain: Number(event.target.value) || 0 });
       }
     });
+    const lossCheck = h("input", { type: "checkbox", class: "kp-check__box" });
+    const lossInput = h("input", {
+      class: "kp-input kp-input--short",
+      type: "text",
+      inputmode: "numeric",
+      "aria-label": "Perte maximale acceptée pour une carte qu’il me manque",
+      onInput: (event) => {
+        event.target.value = event.target.value.replace(/\D/g, "");
+        controller.setAutoLossRule({ maxLoss: Number(event.target.value) || 0 });
+      }
+    });
     const doublesCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     const missingCheck = h("input", { type: "checkbox", class: "kp-check__box" });
     let enabled = false;
     toggle.addEventListener("click", () => controller.setAuto(!enabled));
     gainCheck.addEventListener("change", () => controller.setAutoGainRule({ gainEnabled: gainCheck.checked }));
+    lossCheck.addEventListener("change", () => controller.setAutoLossRule({ lossEnabled: lossCheck.checked }));
     doublesCheck.addEventListener("change", () => controller.setAutoDoublesOnly(doublesCheck.checked));
     missingCheck.addEventListener("change", () => controller.setAutoMissingOnly(missingCheck.checked));
     const shortcuts = [];
@@ -6244,7 +6283,7 @@ Continuer ?`);
         h("span", { class: "kp-label" }, "Je donne"),
         h("span", { class: "kp-label" }, "j’accepte en retour"),
         h("span", { class: "kp-auto__shortcuts" }, shortcut("tout", true), "·", shortcut("rien", false)),
-        h("span", { class: "kp-label kp-rule-rows__floor", title: "Gain minimum par ligne, optionnel : utile quand une carte de rareté inférieure vaut plus que celle reçue. Pour une même rareté (⇄), sans seuil, le gain doit être positif ou nul." }, "si gain ≥")
+        h("span", { class: "kp-label kp-rule-rows__floor", title: "Gain minimum par ligne, optionnel : utile quand une carte de rareté inférieure vaut plus que celle reçue. Sans seuil, un échange à perte n’est jamais accepté (et pour une même rareté ⇄, les prix doivent être connus)." }, "si gain ≥")
       ),
       GIVEN.map(ruleRow)
     );
@@ -6260,6 +6299,14 @@ Continuer ?`);
         gainCheck,
         h("span", {}, "Ou si gain ≥"),
         gainInput,
+        h("span", { class: "kp-muted" }, "chakra")
+      ),
+      h(
+        "label",
+        { class: "kp-check", title: "Accepte aussi, quelle que soit la rareté, une carte qui manque à ma collection, même si l’échange est à perte, tant que la perte (prix moyen de la carte donnée moins celui de la carte reçue) ne dépasse pas ce montant. Prix connus seulement, une seule fois par carte, et « Seulement mes doublons » s’applique. Décoché : l’auto-accept n’accepte jamais un échange à perte (sauf un seuil négatif mis sur une ligne)." },
+        lossCheck,
+        h("span", {}, "Ou si elle me manque, perte ≤"),
+        lossInput,
         h("span", { class: "kp-muted" }, "chakra")
       ),
       h("label", { class: "kp-check", title: "Ne jamais donner le dernier exemplaire d’une carte (sauf si « Ou si gain ≥ » est atteint). Les cartes verrouillées ne sont jamais données, quoi qu’il arrive." }, doublesCheck, h("span", {}, "Seulement mes doublons")),
@@ -6281,6 +6328,10 @@ Continuer ?`);
       gainCheck.checked = auto.gainEnabled;
       gainInput.disabled = !auto.gainEnabled || enabled;
       if (document.activeElement !== gainInput) gainInput.value = String(auto.minGain);
+      lossCheck.checked = auto.lossEnabled;
+      lossCheck.disabled = enabled;
+      lossInput.disabled = !auto.lossEnabled || enabled;
+      if (document.activeElement !== lossInput) lossInput.value = String(auto.maxLoss);
       // everything that defines what gets accepted is locked while it runs
       root.classList.toggle("kp-auto--locked", enabled);
       rulesBlock.title = enabled ? LOCKED_TITLE : "";
