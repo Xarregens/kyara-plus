@@ -40,7 +40,7 @@ const dialog = `<div role="dialog" aria-label="Proposer un échange à ItoVeVe">
   const out = {};
   const read = () => page.evaluate(() => ({
     ourRows: document.querySelectorAll('.kp-dialog-chips').length,
-    ourChips: [...document.querySelectorAll('.kp-dialog-chips button:not([hidden]):not([data-kp-add-missing])')].map((b) => b.textContent),
+    ourChips: [...document.querySelectorAll('.kp-dialog-chips button:not([hidden]):not([data-kp-add-missing]):not([data-kp-add-rarity])')].map((b) => b.textContent),
     siteRowHidden: getComputedStyle(document.querySelector('.filters > .chips:not(.kp-dialog-chips):not([aria-label])')).display === 'none',
     visible: [...document.querySelectorAll('ul.grid > li')].filter((li) => !li.classList.contains('kp-filtered-out')).map((li) => li.querySelector('.nm').textContent.replace('Perso ', '')).join(','),
   }));

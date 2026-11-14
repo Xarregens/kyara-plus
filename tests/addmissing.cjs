@@ -4,7 +4,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const script = fs.readFileSync(process.argv[2], 'utf8');
 const PARTNER = '9c0dd3ed-8c47-44ff-8725-4871f97a016d';
-const characters = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Perso ${i + 1}`, rarity: 'R', series: 'S', image: '' }));
+const characters = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Perso ${i + 1}`, rarity: i + 1 >= 9 && i + 1 <= 12 ? 'L' : 'R', series: 'S', image: '' }));
 const collection = [{ characterId: 1, qty: 1, listable: 1 }, { characterId: 2, qty: 3, listable: 3 }];
 const tile = (id) => `<li><button type="button" class="tile" aria-label="Ajouter Perso ${id}"><img alt="" src="https://cdn.kyara.games/cards/sm/${id}.webp"> <span class="nm">Perso ${id}</span> <span class="pr mono">10 ◆</span></button></li>`;
 const slot = (id) => `<li><img src="https://cdn.kyara.games/cards/sm/${id}.webp"></li>`;
@@ -92,13 +92,38 @@ const siteBehaviour = (cap) => {
   // my tab: button hidden
   await page.evaluate(() => { const tabs = document.querySelectorAll('[role="tab"]'); tabs[1].setAttribute('aria-selected', 'false'); tabs[0].setAttribute('aria-selected', 'true'); });
   await page.waitForTimeout(300);
-  out.mineHidden = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').hidden);
+  out.mineHidden = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').hidden && document.querySelector('.kp-add-rarities').hidden);
+  // D: pastille L turned off → Légendaires (9–12) never added; the choice survives a reload (next trade)
+  const openDialog = async () => {
+    await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), dialog([], 12));
+    await page.evaluate(siteBehaviour, 99);
+  };
+  await page.evaluate(() => document.querySelector('[role="dialog"]').remove());
+  await openDialog();
+  await page.waitForFunction(() => /\(10\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
+  out.allRarities = (await state()).label;
+  await page.click('[data-kp-add-rarity="L"]');
+  await page.waitForTimeout(300);
+  out.noLegend = (await state()).label;
+  await page.goto(`https://kyara.games/profil/${PARTNER}`);
+  await page.addScriptTag({ content: script });
+  await page.waitForTimeout(300);
+  await openDialog();
+  await page.waitForFunction(() => /\(\d+\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  out.reload = await page.evaluate(() => ({ L: document.querySelector('[data-kp-add-rarity="L"]').getAttribute('aria-pressed'), R: document.querySelector('[data-kp-add-rarity="R"]').getAttribute('aria-pressed'), pills: [...document.querySelectorAll('[data-kp-add-rarity]')].map((b) => b.textContent).join(''), label: document.querySelector('[data-kp-add-missing]').textContent }));
+  await page.click(btn);
+  await page.waitForTimeout(800);
+  out.reloadAdded = await state();
   out.errors = errors;
   const ok = out.before.label === '+ Ce qui me manque (5)' && out.filtered.label === '+ Ce qui me manque (1)'
     && out.after.tray === '4,3,5,6,7,8' && out.after.clicks === '3,5,6,7,8' && out.after.label === '+ Ce qui me manque (0)' && out.after.disabled && /5 cartes ajoutées/.test(out.after.toast)
     && out.dialogOpen
     && out.capped.tray === '3,4' && out.capped.clicks === '3,4,5,6,7' && /n’accepte plus/.test(out.capped.toast)
     && out.bigLabel === '+ Ce qui me manque (19)' && out.bigOk && out.big.tray.split(',').length === 21 && /8 autres non ajoutées/.test(out.big.toast) && out.big.disabled && /maximum/.test(out.bigTitle)
+    && out.allRarities === '+ Ce qui me manque (10)' && out.noLegend === '+ Ce qui me manque (6)'
+    && out.reload.L === 'false' && out.reload.R === 'true' && out.reload.pills === 'CUREL' + 'M' && out.reload.label === '+ Ce qui me manque (6)'
+    && out.reloadAdded.clicks.split(',').sort((a, b) => a - b).join(',') === '3,4,5,6,7,8'
     && out.mineHidden && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');

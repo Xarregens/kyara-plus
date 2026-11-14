@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.40
+// @version      2.35.41
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4452,13 +4452,40 @@ Continuer ?`);
         const order = tile2.closest("li")?.style.order;
         return order ? Number(order) : index;
       };
+      // Rarities the button takes (lit pastilles), remembered in the settings for every next trade. All lit by default.
+      let addRarities = new Set(readSetting("addMissingRarities", RARITIES));
+      const rarityOk = (id) => {
+        if (addRarities.size === RARITIES.length) return true;
+        const rarity = catalog?.get(id)?.rarity;
+        return rarity != null && addRarities.has(rarity);
+      };
+      const rarityPills = [...RARITIES].reverse().map((rarity) => {
+        const pill = h("button", { class: "kp-gem-chip", type: "button", "data-kp-add-rarity": rarity, style: { "--kp-rarity": rarityColor(rarity) } }, rarity);
+        pill.addEventListener("click", () => {
+          if (addRarities.has(rarity)) addRarities.delete(rarity);
+          else addRarities.add(rarity);
+          writeSetting("addMissingRarities", RARITIES.filter((r) => addRarities.has(r)));
+          renderRarityPills();
+          schedule();
+        });
+        return [rarity, pill];
+      });
+      function renderRarityPills() {
+        for (const [rarity, pill] of rarityPills) {
+          const on = addRarities.has(rarity);
+          pill.setAttribute("aria-pressed", String(on));
+          pill.title = `${RARITY_LABELS[rarity]} : ${on ? "ajoutées" : "jamais ajoutées"} par « + Ce qui me manque » (clic pour changer, choix gardé pour les prochains échanges)`;
+        }
+      }
+      renderRarityPills();
+      const rarityGroup = h("span", { class: "kp-add-rarities" }, rarityPills.map(([, pill]) => pill));
       // { ids: the cards the button would add, in display order, total: every missing card shown, room: free places }
       function missingCards(shelf) {
         const inTray = trayIds(theirTray());
         const room = Math.max(0, TRADE_SIDE_MAX - inTray.size);
         const seen = /* @__PURE__ */ new Set();
         const ids = [...shelf.querySelectorAll(TILE)].map((tile2, index) => ({ tile: tile2, id: tileCardId(tile2), at: shownAt(tile2, index) })).sort((a, b) => a.at - b.at).filter(({ tile: tile2, id }) => {
-          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || tile2.closest("li")?.classList.contains("kp-filtered-out") || !iLack(id, tile2)) return false;
+          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || tile2.closest("li")?.classList.contains("kp-filtered-out") || !iLack(id, tile2) || !rarityOk(id)) return false;
           seen.add(id);
           return true;
         }).map(({ id }) => id);
@@ -4497,7 +4524,7 @@ Continuer ?`);
       }
       // deferred: the rest of the user's click must not reach the site after our synthetic clicks (see CLAUDE.md)
       addMissing.addEventListener("click", () => setTimeout(addMissingCards, 0));
-      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs, addMissing);
+      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs, rarityGroup, addMissing);
       function placeChips(shelf, tab) {
         const siteRow = [...shelf.querySelectorAll(".chips")].find((row) => row !== chipRow && !row.getAttribute("aria-label"));
         if (!siteRow) return;
@@ -4513,6 +4540,7 @@ Continuer ?`);
           }
         }
         addMissing.hidden = tab !== "theirs";
+        rarityGroup.hidden = tab !== "theirs";
         addMissing.className = `${baseClass} kp-add-missing`;
         if (chipRow.nextElementSibling !== siteRow) siteRow.before(chipRow);
       }
@@ -4537,7 +4565,7 @@ Continuer ?`);
           const n = missing?.ids.length;
           const text = missing == null ? "Ajout…" : `+ Ce qui me manque (${n})`;
           if (addMissing.textContent !== text) addMissing.textContent = text;
-          const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés.`;
+          const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : ""}.`;
           if (title && addMissing.title !== title) addMissing.title = title;
           if (!adding) addMissing.disabled = n === 0;
         }
@@ -5294,7 +5322,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.40";
+  var SURVEY_VERSION = "2.35.41";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9905,7 +9933,11 @@ button.kp-act__stat:hover,\r
   injectStyles(styles_default);
   // Styles for the fair-play gauge and the multi-card profitable offers
   injectStyles(`
-.kp-dialog-chips .kp-add-missing { margin-left: auto; border-color: #e3b341; color: #e3b341; font-weight: 700; }
+/* hidden attribute must win over the display below */
+.kp-dialog-chips .kp-add-rarities { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; }
+.kp-dialog-chips .kp-add-rarities[hidden] { display: none; }
+.kp-dialog-chips .kp-add-rarities .kp-gem-chip { width: 22px; height: 22px; font-size: 11px; }
+.kp-dialog-chips .kp-add-missing { border-color: #e3b341; color: #e3b341; font-weight: 700; }
 .kp-dialog-chips .kp-add-missing:disabled { opacity: .45; cursor: default; }
 .kp-release-all summary { color: var(--fg2); font-size: var(--t-meta); cursor: pointer; }
 .kp-releases--all { max-height: 220px; margin-top: 4px; overflow-y: auto; }

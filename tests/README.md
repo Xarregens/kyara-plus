@@ -25,7 +25,7 @@ Lancer un test depuis ce dossier : `node <test>.cjs ../kyaraPlus.user.js`
 | `discuss.cjs` | Mon activité (Échanges) | Discussion dans la ligne : « Discuter (N) », messages lus, envoi (Entrée), compteur mis à jour, fermeture. |
 | `wake.cjs` | Mon activité | Rafraîchissement immédiat quand le site relit ses échanges ou redessine son panneau ; pas de boucle sur les propres requêtes du script. |
 | `dialogchips.cjs` | Proposer un échange | Filtres du script dans leur rangée (jamais en double), « Il me manque » immédiat, « Ses doubles » dès les exemplaires connus, demandés en priorité ; changement d'onglet. |
-| `addmissing.cjs` | Proposer un échange | Bouton « + Ce qui me manque » : compteur, filtres respectés, cartes déjà dans le plateau sautées, une fois chacune, 20 cartes différentes au plus de son côté (exemplaires en double comptés une fois), dans l'ordre affiché, arrêt si le site refuse ; caché sur l'onglet « Mes cartes ». |
+| `addmissing.cjs` | Proposer un échange | Bouton « + Ce qui me manque » : compteur, filtres respectés, cartes déjà dans le plateau sautées, une fois chacune, 20 cartes différentes au plus de son côté (exemplaires en double comptés une fois), dans l'ordre affiché, arrêt si le site refuse ; pastilles de rareté (rareté éteinte jamais ajoutée, choix gardé après rechargement) ; caché sur l'onglet « Mes cartes ». |
 | `subkeep.cjs` | Mon activité | Sous-catégorie rouverte après rechargement (mémorisée), adresse du site suivie sans mémoire. |
 | `activity3.cjs` | Mon activité | Onglets Échanges / Transactions, sous-catégories par défaut, historique chargé par sous-catégorie. |
 | `loadtime_run.cjs` | Mon activité | Temps jusqu'au premier affichage et aux premières lignes, chronologie des requêtes. |

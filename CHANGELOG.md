@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.41
+- « + Ce qui me manque » : pastilles de rareté (C U R E L M) à côté du bouton. Une rareté éteinte n'est jamais ajoutée
+  par le bouton (le chiffre du bouton en tient compte). Toutes allumées par défaut ; le choix est gardé pour les
+  échanges suivants, même après rechargement de la page.
+
 ## 2.35.40
 - Proposer un échange, onglet « Cartes de … » : nouveau bouton « + Ce qui me manque (N) ». Il met dans l'échange les
   premières cartes affichées de ce joueur qui manquent à la collection, une fois chacune, jusqu'à 20 cartes différentes
