@@ -40,7 +40,7 @@ const dialog = `<div role="dialog" aria-label="Proposer un échange à ItoVeVe">
   const out = {};
   const read = () => page.evaluate(() => ({
     ourRows: document.querySelectorAll('.kp-dialog-chips').length,
-    ourChips: [...document.querySelectorAll('.kp-dialog-chips button:not([hidden])')].map((b) => b.textContent),
+    ourChips: [...document.querySelectorAll('.kp-dialog-chips button:not([hidden]):not([data-kp-add-missing])')].map((b) => b.textContent),
     siteRowHidden: getComputedStyle(document.querySelector('.filters > .chips:not(.kp-dialog-chips):not([aria-label])')).display === 'none',
     visible: [...document.querySelectorAll('ul.grid > li')].filter((li) => !li.classList.contains('kp-filtered-out')).map((li) => li.querySelector('.nm').textContent.replace('Perso ', '')).join(','),
   }));
@@ -69,6 +69,7 @@ const dialog = `<div role="dialog" aria-label="Proposer un échange à ItoVeVe">
   await page.waitForTimeout(300);
   await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), dialog.replace('<div class="trays"></div>', '<div class="trays"><section class="tray mine"><header><h3>Tu donnes</h3> <span class="total mono">≈ 400 ◆</span></header><ul class="slots"></ul></section><section class="tray"><header><h3>Tu reçois</h3> <span class="total mono">≈ 100 ◆</span></header><ul class="slots"></ul></section></div><div class="verdict"></div>'));
   await page.waitForSelector('.kp-dialog-chips', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('.kp-verdict', { timeout: 5000 }).catch(() => {});
   out.fromFriends = await page.evaluate(() => ({ chips: document.querySelectorAll('.kp-dialog-chips').length, verdict: Boolean(document.querySelector('.kp-verdict')) }));
   out.errors = errors;
   const ok = out.initial.ourRows === 1 && out.initial.ourChips.join() === 'Ses doubles,Il me manque' && out.initial.siteRowHidden && out.initial.visible === '1,2,3,4,5,6'

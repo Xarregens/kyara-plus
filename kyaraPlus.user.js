@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.39
+// @version      2.35.40
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4439,7 +4439,65 @@ Continuer ?`);
       );
       // Our chips live in a row of their own, placed before the site's row (which is hidden): the site redraws its row
       // freely without ever duplicating or losing ours. The row borrows the site's classes to look the same.
-      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs);
+      // "+ Ce qui me manque" (partner's tab): puts into the trade the first cards shown in the partner's grid (display order)
+      // that I don't own (qty 0), once each, skipping those already in their tray, up to the site's limit of
+      // TRADE_SIDE_MAX different cards per side (copies of a card already there don't count). Respects the filters in use.
+      const TRADE_SIDE_MAX = 20;
+      const addMissing = h("button", { type: "button", "data-kp-add-missing": "" }, "+ Ce qui me manque");
+      let adding = false;
+      const theirTray = () => [...document.querySelectorAll(`${TRADE_DIALOG} ${TRADE_TRAY}`)].find((tray) => !tray.classList.contains("mine")) ?? null;
+      const trayIds = (tray) => new Set([...tray?.querySelectorAll(".slots li img") ?? []].map((img) => Number(img.getAttribute("src")?.match(/\/cards\/\w+\/(\d+)\./)?.[1])));
+      const iLack = (id, tile2) => collection ? myQty(id) === 0 : Boolean(tile2.querySelector(".lack"));
+      const shownAt = (tile2, index) => {
+        const order = tile2.closest("li")?.style.order;
+        return order ? Number(order) : index;
+      };
+      // { ids: the cards the button would add, in display order, total: every missing card shown, room: free places }
+      function missingCards(shelf) {
+        const inTray = trayIds(theirTray());
+        const room = Math.max(0, TRADE_SIDE_MAX - inTray.size);
+        const seen = /* @__PURE__ */ new Set();
+        const ids = [...shelf.querySelectorAll(TILE)].map((tile2, index) => ({ tile: tile2, id: tileCardId(tile2), at: shownAt(tile2, index) })).sort((a, b) => a.at - b.at).filter(({ tile: tile2, id }) => {
+          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || tile2.closest("li")?.classList.contains("kp-filtered-out") || !iLack(id, tile2)) return false;
+          seen.add(id);
+          return true;
+        }).map(({ id }) => id);
+        return { ids: ids.slice(0, room), total: ids.length, room };
+      }
+      async function addMissingCards() {
+        const shelf = document.querySelector(SHELF);
+        if (adding || !shelf) return;
+        const { ids, total, room } = missingCards(shelf);
+        if (!room) return toast(`Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.`, "info");
+        if (!ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
+        adding = true;
+        addMissing.disabled = true;
+        let added = 0;
+        let refused = 0;
+        try {
+          for (const id of ids) {
+            const tile2 = [...document.querySelectorAll(`${SHELF} ${TILE}`)].find((t) => tileCardId(t) === id);
+            const tray = theirTray();
+            if (tray && trayIds(tray).size >= TRADE_SIDE_MAX) break;
+            if (!tile2 || tile2.disabled || trayIds(tray).has(id)) continue;
+            tile2.click();
+            await new Promise((resolve) => setTimeout(resolve, 40));
+            if (!tray || trayIds(theirTray()).has(id)) {
+              added++;
+              refused = 0;
+            } else if (++refused >= 3) break;
+          }
+        } finally {
+          adding = false;
+          addMissing.disabled = false;
+          schedule();
+        }
+        if (refused >= 3) toast(`Le site n’accepte plus de cartes dans l’échange (${added} ajoutée${added > 1 ? "s" : ""}).`, "error");
+        else toast(`${added} carte${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""} à l’échange.${total > ids.length ? ` Maximum ${TRADE_SIDE_MAX} cartes différentes de son côté : ${total - ids.length} autre${total - ids.length > 1 ? "s" : ""} non ajoutée${total - ids.length > 1 ? "s" : ""}.` : ""}`, "success");
+      }
+      // deferred: the rest of the user's click must not reach the site after our synthetic clicks (see CLAUDE.md)
+      addMissing.addEventListener("click", () => setTimeout(addMissingCards, 0));
+      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs, addMissing);
       function placeChips(shelf, tab) {
         const siteRow = [...shelf.querySelectorAll(".chips")].find((row) => row !== chipRow && !row.getAttribute("aria-label"));
         if (!siteRow) return;
@@ -4454,6 +4512,8 @@ Continuer ?`);
             chip.className = `${baseClass}${active.has(chip.dataset.kpFilter) ? " on" : ""}`;
           }
         }
+        addMissing.hidden = tab !== "theirs";
+        addMissing.className = `${baseClass} kp-add-missing`;
         if (chipRow.nextElementSibling !== siteRow) siteRow.before(chipRow);
       }
       function decorate2() {
@@ -4471,6 +4531,15 @@ Continuer ?`);
           renderCount(tile2, count);
           const hidden = activeFilters.some((filter) => filter.ready({ count }) && !filter.keep({ id, tile: tile2, count }));
           tile2.closest("li")?.classList.toggle("kp-filtered-out", hidden);
+        }
+        if (tab === "theirs") {
+          const missing = adding ? null : missingCards(shelf);
+          const n = missing?.ids.length;
+          const text = missing == null ? "Ajout…" : `+ Ce qui me manque (${n})`;
+          if (addMissing.textContent !== text) addMissing.textContent = text;
+          const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés.`;
+          if (title && addMissing.title !== title) addMissing.title = title;
+          if (!adding) addMissing.disabled = n === 0;
         }
         orderTiles(shelf, tiles);
       }
@@ -5225,7 +5294,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.39";
+  var SURVEY_VERSION = "2.35.40";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
@@ -9836,6 +9905,8 @@ button.kp-act__stat:hover,\r
   injectStyles(styles_default);
   // Styles for the fair-play gauge and the multi-card profitable offers
   injectStyles(`
+.kp-dialog-chips .kp-add-missing { margin-left: auto; border-color: #e3b341; color: #e3b341; font-weight: 700; }
+.kp-dialog-chips .kp-add-missing:disabled { opacity: .45; cursor: default; }
 .kp-release-all summary { color: var(--fg2); font-size: var(--t-meta); cursor: pointer; }
 .kp-releases--all { max-height: 220px; margin-top: 4px; overflow-y: auto; }
 .kp-release__detail { display: block; color: var(--mut); }
