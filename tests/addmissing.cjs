@@ -7,6 +7,8 @@ const PARTNER = '9c0dd3ed-8c47-44ff-8725-4871f97a016d';
 const characters = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Perso ${i + 1}`, rarity: i + 1 >= 9 && i + 1 <= 12 ? 'L' : 'R', series: 'S', image: '' }));
 const collection = [{ characterId: 1, qty: 1, listable: 1 }, { characterId: 2, qty: 3, listable: 3 }];
 const tile = (id) => `<li><button type="button" class="tile" aria-label="Ajouter Perso ${id}"><img alt="" src="https://cdn.kyara.games/cards/sm/${id}.webp"> <span class="nm">Perso ${id}</span> <span class="pr mono">10 ◆</span></button></li>`;
+// tuile réelle (relevé du 17/11/2026) : lettre de rareté .seal, légende .cap avec « Il me manque » (.lack) posé par le site
+const realTile = (id, lack, seal) => `<li><button type="button" class="tile" aria-label="Ajouter Perso ${id}"><span class="card"><div class="shw"><img alt="" src="https://cdn.kyara.games/cards/sm/${id}.webp"><div class="top"><span class="name">Perso ${id}</span> <span class="seal">${seal}</span></div></div></span> <span class="cap"><span class="pr mono">10 ◆</span> ${lack ? '<span class="lack">Il me manque</span>' : ''}</span></button></li>`;
 const slot = (id) => `<li><img src="https://cdn.kyara.games/cards/sm/${id}.webp"></li>`;
 // fenêtre redessinée (relevé du 17/11/2026) : plateaux dans section.table, un inventaire par joueur (section.inv.mine /
 // section.inv.theirs, celui qui n'est pas à l'écran a la classe « hid »), filtres du site dans .filters
@@ -87,8 +89,11 @@ const siteBehaviour = (cap) => {
   await page.waitForTimeout(2500);
   out.bigLabel = (await state()).label;
   const expected = await page.evaluate(() => [...document.querySelectorAll('section.inv.theirs ul.grid > li')].map((li, i) => ({ id: Number(li.querySelector('img').src.match(/(\d+)\.webp/)[1]), at: li.style.order ? Number(li.style.order) : i })).sort((a, b) => a.at - b.at).map((x) => x.id).filter((id) => id > 2 && id !== 30).slice(0, 19).join(','));
+  const t0 = Date.now();
   await page.click(btn);
-  await page.waitForTimeout(1500);
+  await page.waitForFunction(() => /\(0\)/.test(document.querySelector('[data-kp-add-missing]').textContent), null, { timeout: 5000 });
+  out.bigMs = Date.now() - t0;
+  await page.waitForTimeout(300);
   out.big = await state();
   out.bigOk = out.big.clicks === expected;
   out.bigTitle = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').title);
@@ -119,6 +124,17 @@ const siteBehaviour = (cap) => {
   await page.click(btn);
   await page.waitForTimeout(800);
   out.reloadAdded = await state();
+  // E: the site's mark is the truth: card 1 and 2 owned per my collection but marked missing, 3 marked owned (no .lack)
+  // while absent from my collection, 4 a Mythique (seal M) marked missing, catalog says R
+  await page.evaluate(() => document.querySelector('[role="dialog"]').remove());
+  await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), dialog([], 0).replace('<ul class="grid svelte-adlc8v"></ul></div></section> <div class="foot">', `<ul class="grid svelte-adlc8v">${[[1, true, 'R'], [2, true, 'R'], [3, false, 'R'], [4, true, 'M'], [5, false, 'R']].map(([id, lack, seal]) => realTile(id, lack, seal)).join('')}</ul></div></section> <div class="foot">`));
+  await page.evaluate(siteBehaviour, 99);
+  await page.waitForTimeout(500);
+  out.siteMark = (await state()).label;
+  await page.click('[data-kp-add-rarity="M"]');
+  await page.waitForTimeout(300);
+  out.siteMarkNoM = (await state()).label;
+  await page.click('[data-kp-add-rarity="M"]');
   out.errors = errors;
   const ok = out.before.label === '+ Ce qui me manque (5)' && out.filtered.label === '+ Ce qui me manque (1)'
     && out.after.tray === '4,3,5,6,7,8' && out.after.clicks === '3,5,6,7,8' && out.after.label === '+ Ce qui me manque (0)' && out.after.disabled && /5 cartes ajoutées/.test(out.after.toast)
@@ -128,7 +144,7 @@ const siteBehaviour = (cap) => {
     && out.allRarities === '+ Ce qui me manque (10)' && out.noLegend === '+ Ce qui me manque (6)'
     && out.reload.L === 'false' && out.reload.R === 'true' && out.reload.pills === 'CUREL' + 'M' && out.reload.label === '+ Ce qui me manque (6)'
     && out.reloadAdded.clicks.split(',').sort((a, b) => a - b).join(',') === '3,4,5,6,7,8'
-    && out.mineHidden && out.myCounts === '×1,×3' && errors.length === 0;
+    && out.mineHidden && out.bigMs < 400 && out.siteMark === '+ Ce qui me manque (3)' && out.siteMarkNoM === '+ Ce qui me manque (2)' && out.myCounts === '×1,×3' && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

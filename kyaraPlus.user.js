@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.42
+// @version      2.35.43
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4391,7 +4391,7 @@ Continuer ?`);
         sorter.apply(ordered, ready);
       }
       const schedule = () => {
-        if (frame) return;
+        if (frame || adding) return;
         frame = requestAnimationFrame(() => {
           frame = 0;
           decorate2();
@@ -4420,16 +4420,20 @@ Continuer ?`);
       const theirInventory = () => [...document.querySelectorAll(TRADE_INV)].find(isTheirInventory) ?? null;
       const theirTray = () => [...document.querySelectorAll(`${TRADE_DIALOG} ${TRADE_TRAY}`)].find((tray) => !tray.classList.contains("mine")) ?? null;
       const trayIds = (tray) => new Set([...tray?.querySelectorAll('img[src*="/cards/"]') ?? []].map((img) => Number(img.getAttribute("src")?.match(/\/cards\/\w+\/(\d+)\./)?.[1])).filter(Boolean));
-      const iLack = (id, tile2) => collection ? myQty(id) === 0 : Boolean(tile2.querySelector(".lack"));
+      // the site marks the partner's cards I don't own with "Il me manque" (.lack in the tile's caption, relevé du
+      // 17/11/2026): that mark is the truth, my collection is only a fallback for a tile without a caption
+      const iLack = (id, tile2) => tile2.querySelector(".cap") ? Boolean(tile2.querySelector(".lack")) : collection ? myQty(id) === 0 : Boolean(tile2.querySelector(".lack"));
       const shownAt = (tile2, index) => {
         const order = tile2.closest("li")?.style.order;
         return order ? Number(order) : index;
       };
       // Rarities the button takes (lit pills), remembered in the settings for every next trade. All lit by default.
       let addRarities = new Set(readSetting("addMissingRarities", RARITIES));
-      const rarityOk = (id) => {
+      // rarity read on the tile (its seal letter), the catalog otherwise
+      const rarityOk = (id, tile2) => {
         if (addRarities.size === RARITIES.length) return true;
-        const rarity = catalog?.get(id)?.rarity;
+        const seal = tile2?.querySelector(".seal")?.textContent.trim();
+        const rarity = RARITIES.includes(seal) ? seal : catalog?.get(id)?.rarity;
         return rarity != null && addRarities.has(rarity);
       };
       const rarityPills = [...RARITIES].reverse().map((rarity) => {
@@ -4458,7 +4462,7 @@ Continuer ?`);
         const room = Math.max(0, TRADE_SIDE_MAX - inTray.size);
         const seen = /* @__PURE__ */ new Set();
         const ids = [...inv.querySelectorAll(TILE)].map((tile2, index) => ({ tile: tile2, id: tileCardId(tile2), at: shownAt(tile2, index) })).sort((a, b) => a.at - b.at).filter(({ tile: tile2, id }) => {
-          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || !iLack(id, tile2) || !rarityOk(id)) return false;
+          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || !iLack(id, tile2) || !rarityOk(id, tile2)) return false;
           seen.add(id);
           return true;
         }).map(({ id }) => id);
@@ -4472,17 +4476,34 @@ Continuer ?`);
         if (!ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
         adding = true;
         addMissing.disabled = true;
+        addMissing.textContent = "Ajout…";
         let added = 0;
         let refused = 0;
+        // fast: the site (Svelte) updates the tray right after the click, in a microtask; only when it does not do it
+        // at once, wait a little for that card (slow site or refusal)
+        const settled = async (id) => {
+          await Promise.resolve();
+          for (let waited = 0; !trayIds(theirTray()).has(id) && waited < 60; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+          return trayIds(theirTray()).has(id);
+        };
+        let tiles = null;
+        const tileFor = (id) => {
+          let tile2 = tiles?.get(id);
+          if (!tile2?.isConnected) {
+            tiles = new Map([...theirInventory()?.querySelectorAll(TILE) ?? []].map((t) => [tileCardId(t), t]));
+            tile2 = tiles.get(id);
+          }
+          return tile2;
+        };
         try {
           for (const id of ids) {
-            const tile2 = [...theirInventory()?.querySelectorAll(TILE) ?? []].find((t) => tileCardId(t) === id);
+            const tile2 = tileFor(id);
             const tray = theirTray();
-            if (tray && trayIds(tray).size >= TRADE_SIDE_MAX) break;
-            if (!tile2 || tile2.disabled || trayIds(tray).has(id)) continue;
+            const inTray = trayIds(tray);
+            if (tray && inTray.size >= TRADE_SIDE_MAX) break;
+            if (!tile2 || tile2.disabled || inTray.has(id)) continue;
             tile2.click();
-            await new Promise((resolve) => setTimeout(resolve, 40));
-            if (!tray || trayIds(theirTray()).has(id)) {
+            if (!tray || await settled(id)) {
               added++;
               refused = 0;
             } else if (++refused >= 3) break;
@@ -5300,7 +5321,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.42";
+  var SURVEY_VERSION = "2.35.43";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)
