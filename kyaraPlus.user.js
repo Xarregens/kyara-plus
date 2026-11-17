@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.44
+// @version      2.35.45
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4364,15 +4364,14 @@ Continuer ?`);
   var TILE = "ul.grid button.tile";
   var isTheirInventory = (inv) => inv.classList.contains("theirs");
   var isInventoryShown = (inv) => !inv.classList.contains("hid") && inv.getClientRects().length > 0;
-  // "Voir plus (4892 autres)" shows 60 more cards per click. The site sorts the rarest first, so the commonest cards only
-  // come at the very end: all the clicks it takes are made at once (the site draws once), not one per frame.
-  function loadAllCards(inv) {
-    const more = inv.querySelector("button.more");
-    if (!more) return false;
-    const left = Number(more.textContent.match(/\(([\d\s\u202f\u00a0.]+)/)?.[1].replace(/\D/g, "")) || 0;
-    const clicks = Math.min(200, Math.max(1, Math.ceil(left / 60)));
-    for (let i = 0; i < clicks && more.isConnected && !more.disabled; i++) more.click();
-    return true;
+  // The site shows the partner's cards 60 at a time ("Voir plus (4892 autres)"), the rarest first, and every card is a
+  // heavy animated drawing: the script never loads them all (2.35.44 did, the page and the computer slowed down). To find
+  // the cards I lack, "+ Ce qui me manque" narrows the site's own list instead (see addMissingCards).
+  var isPressed = (button) => button?.getAttribute("aria-pressed") === "true" || Boolean(button?.classList.contains("on"));
+  var sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  async function waitFor(test, ms = 800) {
+    for (let waited = 0; !test() && waited < ms; waited += 20) await sleep(20);
+    return test();
   }
   var trade_dialog_default = {
     id: "trade-dialog",
@@ -4394,8 +4393,9 @@ Continuer ?`);
       );
       function orderTiles(inv, tiles, sorter) {
         const items = tiles.map((tile2) => ({ tile: tile2, card: catalog?.get(tileCardId(tile2)) })).filter((item) => item.card && item.tile.closest("li"));
-        requestPrices(items.map((item) => item.card.id));
         const allLoaded = Boolean(catalog) && !inv.querySelector("button.more");
+        // prices serve the sort only, which waits for the whole list: none asked for a list shown by pages
+        if (allLoaded) requestPrices(items.map((item) => item.card.id));
         const ready = allLoaded && (pricesFailed || items.every((item) => isPriceLoaded(item.card.id)));
         const ordered = items.map(({ tile: tile2, card }) => ({ element: tile2.closest("li"), card, price: priceOf(card.id) }));
         sorter.apply(ordered, ready);
@@ -4478,64 +4478,136 @@ Continuer ?`);
         }).map(({ id }) => id);
         return { ids: ids.slice(0, room), total: ids.length, room };
       }
-      async function addMissingCards() {
-        let inv = theirInventory();
-        if (adding || !inv) return;
-        if (inv.querySelector("button.more")) {
-          adding = true;
-          addMissing.disabled = true;
-          addMissing.textContent = "Chargement…";
-          for (const start = Date.now(); inv?.querySelector("button.more") && Date.now() - start < 2e4; inv = theirInventory()) {
-            loadAllCards(inv);
-            await new Promise((resolve) => setTimeout(resolve, 100));
-          }
-          adding = false;
-          addMissing.disabled = false;
-          if (!inv) return;
+      // what my collection, the catalog and /trades/available/<joueur> say: the partner's cards I lack, among the lit
+      // rarities and not yet in their tray (null until the three are loaded). Used while the site shows its list by pages.
+      function missingFromData() {
+        const counts = theirCounts.get(profileIdFromPath());
+        if (!counts || !collection || !catalog) return null;
+        const inTray = trayIds(theirTray());
+        let n = 0;
+        for (const [id, copies] of counts) if (copies > 0 && myQty(id) === 0 && !inTray.has(id) && addRarities.has(catalog.get(id)?.rarity)) n++;
+        return n;
+      }
+      // fast: the site (Svelte) updates the tray right after the click, in a microtask; only when it does not do it
+      // at once, wait a little for that card (slow site or refusal)
+      const settled = async (id) => {
+        await Promise.resolve();
+        for (let waited = 0; !trayIds(theirTray()).has(id) && waited < 60; waited += 10) await sleep(10);
+        return trayIds(theirTray()).has(id);
+      };
+      // clicks the given cards of the partner's grid; run.added / run.refused carry over between calls
+      async function clickCards(ids, run) {
+        const tiles = new Map([...theirInventory()?.querySelectorAll(TILE) ?? []].map((t) => [tileCardId(t), t]));
+        for (const id of ids) {
+          const tile2 = tiles.get(id);
+          const tray = theirTray();
+          const inTray = trayIds(tray);
+          if (tray && inTray.size >= TRADE_SIDE_MAX) return run.full = true;
+          if (!tile2?.isConnected || tile2.disabled || inTray.has(id)) continue;
+          tile2.click();
+          if (!tray || await settled(id)) {
+            run.added++;
+            run.refused = 0;
+          } else if (++run.refused >= 3) return run.stop = true;
         }
+      }
+      // adds what the grid shows; with pages, "Voir plus" one page at a time until the room is used (at most `pages`)
+      async function addFromGrid(run, pages) {
+        for (let page = 0; !run.stop && !run.full; page++) {
+          const inv = theirInventory();
+          if (!inv) return;
+          const { ids, room } = missingCards(inv);
+          if (!room) return run.full = true;
+          await clickCards(ids, run);
+          if (run.stop || run.full || ids.length >= room) return;
+          const more = theirInventory()?.querySelector("button.more");
+          if (!more || page >= pages) return;
+          const before = theirInventory().querySelectorAll(TILE).length;
+          more.click();
+          await waitFor(() => (theirInventory()?.querySelectorAll(TILE).length ?? 0) > before);
+        }
+      }
+      // the site's filters of the partner's inventory: "Il me manque" chip and rarity bar (one button per letter + Toutes)
+      const lackChip = () => [...theirInventory()?.querySelectorAll(".filters .chips button") ?? []].find((chip) => chip.textContent.trim() === "Il me manque") ?? null;
+      const rarityBar = () => theirInventory()?.querySelector('.filters [role="group"].rbar, .filters .rbar') ?? null;
+      const barButton = (letter) => [...rarityBar()?.querySelectorAll("button") ?? []].find((button) => !button.classList.contains("all") && button.querySelector(".g")?.textContent.trim() === letter) ?? null;
+      const barAll = () => rarityBar()?.querySelector("button.all") ?? null;
+      const barPressed = () => RARITIES.filter((letter) => isPressed(barButton(letter)));
+      // only `letter` shown by the site's rarity bar; false when the bar does not behave as expected
+      async function showOnly(letter) {
+        if (!barButton(letter)) return false;
+        if (barPressed().join() === letter) return true;
+        if (barAll() && !isPressed(barAll())) {
+          barAll().click();
+          await waitFor(() => isPressed(barAll()));
+        }
+        barButton(letter)?.click();
+        return waitFor(() => barPressed().join() === letter);
+      }
+      async function restoreBar(letters) {
+        if (barPressed().join() === letters.join()) return;
+        if (barAll() && !isPressed(barAll())) {
+          barAll().click();
+          await waitFor(() => isPressed(barAll()));
+        }
+        for (const letter of letters) {
+          if (isPressed(barButton(letter))) continue;
+          barButton(letter)?.click();
+          await waitFor(() => isPressed(barButton(letter)));
+        }
+      }
+      async function addMissingCards() {
+        const inv = theirInventory();
+        if (adding || !inv) return;
+        const paged = Boolean(inv.querySelector("button.more"));
         const { ids, total, room } = missingCards(inv);
         if (!room) return toast(`Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.`, "info");
-        if (!ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
+        if (!paged && !ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
         adding = true;
         addMissing.disabled = true;
         addMissing.textContent = "Ajout…";
-        let added = 0;
-        let refused = 0;
-        // fast: the site (Svelte) updates the tray right after the click, in a microtask; only when it does not do it
-        // at once, wait a little for that card (slow site or refusal)
-        const settled = async (id) => {
-          await Promise.resolve();
-          for (let waited = 0; !trayIds(theirTray()).has(id) && waited < 60; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
-          return trayIds(theirTray()).has(id);
-        };
-        let tiles = null;
-        const tileFor = (id) => {
-          let tile2 = tiles?.get(id);
-          if (!tile2?.isConnected) {
-            tiles = new Map([...theirInventory()?.querySelectorAll(TILE) ?? []].map((t) => [tileCardId(t), t]));
-            tile2 = tiles.get(id);
-          }
-          return tile2;
-        };
+        const run = { added: 0, refused: 0, stop: false, full: false };
+        const undo = [];
         try {
-          for (const id of ids) {
-            const tile2 = tileFor(id);
-            const tray = theirTray();
-            const inTray = trayIds(tray);
-            if (tray && inTray.size >= TRADE_SIDE_MAX) break;
-            if (!tile2 || tile2.disabled || inTray.has(id)) continue;
-            tile2.click();
-            if (!tray || await settled(id)) {
-              added++;
-              refused = 0;
-            } else if (++refused >= 3) break;
+          if (!paged) await clickCards(ids, run);
+          else {
+            // the site's list narrowed to the cards I lack, then to one lit rarity at a time, rarest first: the first
+            // page is then enough. The player's own filters come back afterwards.
+            const lack = lackChip();
+            if (lack && !isPressed(lack)) {
+              lack.click();
+              if (await waitFor(() => isPressed(lackChip()))) undo.push(async () => {
+                lackChip()?.click();
+                await waitFor(() => !isPressed(lackChip()));
+              });
+            }
+            const original = barPressed();
+            const wanted = RARITIES.filter((letter) => addRarities.has(letter) && (!original.length || original.includes(letter)));
+            let narrowed = false;
+            if (rarityBar() && wanted.length < RARITIES.length) {
+              undo.push(() => restoreBar(original));
+              narrowed = true;
+              for (const letter of wanted) {
+                if (run.stop || run.full) break;
+                if (!await showOnly(letter)) {
+                  narrowed = false;
+                  await restoreBar(original);
+                  break;
+                }
+                await addFromGrid(run, 5);
+              }
+            }
+            if (!narrowed && !run.stop && !run.full) await addFromGrid(run, 100);
           }
         } finally {
+          for (const step of undo.reverse()) await step();
           adding = false;
           addMissing.disabled = false;
           schedule();
         }
+        const { added, refused } = run;
         if (refused >= 3) toast(`Le site n’accepte plus de cartes dans l’échange (${added} ajoutée${added > 1 ? "s" : ""}).`, "error");
+        else if (paged) toast(added ? `${added} carte${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""} à l’échange.${run.full ? ` Maximum ${TRADE_SIDE_MAX} cartes différentes de son côté atteint.` : ""}` : "Aucune carte à ajouter : ce joueur n’a aucune carte qui te manque parmi les raretés allumées.", added ? "success" : "info");
         else toast(`${added} carte${added > 1 ? "s" : ""} ajoutée${added > 1 ? "s" : ""} à l’échange.${total > ids.length ? ` Maximum ${TRADE_SIDE_MAX} cartes différentes de son côté : ${total - ids.length} autre${total - ids.length > 1 ? "s" : ""} non ajoutée${total - ids.length > 1 ? "s" : ""}.` : ""}`, "success");
       }
       // deferred: the rest of the user's click must not reach the site after our synthetic clicks (see CLAUDE.md)
@@ -4555,26 +4627,24 @@ Continuer ?`);
       function decorate2() {
         const inventories = [...document.querySelectorAll(TRADE_INV)];
         if (!inventories.length) return addRow.remove();
-        // the inventory on screen first, then the other one, so that "Tu reçois" is ready when the player gets there
-        const shown = inventories.filter(isInventoryShown);
-        if (!shown.some(loadAllCards)) inventories.filter((inv) => !shown.includes(inv)).find(loadAllCards);
         for (const inv of inventories) {
           const theirs = isTheirInventory(inv);
           const counts = theirs ? countsOf(profileIdFromPath()) : collection && new Map([...collection].map(([id, entry]) => [id, entry.qty]));
-          // the site shows its cards by pages: load them all, but only for the inventory on screen
           const tiles = [...inv.querySelectorAll(TILE)];
           for (const tile2 of tiles) renderCount(tile2, counts ? counts.get(tileCardId(tile2)) ?? 0 : null);
           if (theirs) {
             placeAddRow(inv);
-            const loading = Boolean(inv.querySelector("button.more"));
-            const missing = adding ? null : missingCards(inv);
-            const n = missing?.ids.length;
-            const text = missing == null ? "Ajout…" : loading && n < missing.room ? "+ Ce qui me manque (…)" : `+ Ce qui me manque (${n})`;
+            // whole list on screen: what the grid shows (site filters included); list by pages: what the data says
+            const paged = Boolean(inv.querySelector("button.more"));
+            const missing = missingCards(inv);
+            const known = paged ? missingFromData() : missing.ids.length;
+            const n = known == null ? null : Math.min(known, missing.room);
+            const text = `+ Ce qui me manque (${n ?? "…"})`;
             if (addMissing.textContent !== text) addMissing.textContent = text;
-            const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : ""}.`;
-            const shownTitle = loading && missing && n < missing.room ? "Chargement des cartes de ce joueur… Un clic ajoute les cartes qui te manquent dès qu’elles sont toutes là." : title;
-            if (shownTitle && addMissing.title !== shownTitle) addMissing.title = shownTitle;
-            if (!adding) addMissing.disabled = n === 0 && !loading;
+            const off = addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : "";
+            const title = missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : paged ? `Ajoute à l’échange jusqu’à ${missing.room} cartes de ce joueur que tu n’as pas${known ? ` (${known} en tout)` : ""}, une fois chacune, des plus rares aux plus communes (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté). Le script se sert un instant des filtres du site « Il me manque » et rareté, puis les remet comme avant${off}.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${off}.`;
+            if (addMissing.title !== title) addMissing.title = title;
+            addMissing.disabled = n === 0;
           }
           orderTiles(inv, tiles, sorters[theirs ? "theirs" : "mine"]);
         }
@@ -5347,7 +5417,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.44";
+  var SURVEY_VERSION = "2.35.45";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

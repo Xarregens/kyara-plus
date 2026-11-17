@@ -1,7 +1,8 @@
-// Fenêtre « Proposer un échange » (relevé du 17/11/2026) : le site trie les cartes du partenaire de la plus rare à la
-// moins rare et n'en montre que 60, « Voir plus (N autres) » en ajoute 60 par clic. Avec seulement C et U allumées,
-// « + Ce qui me manque » ne doit pas rester grisé à 0 : toutes les cartes sont chargées d'un coup (un seul dessin du
-// site), l'inventaire à l'écran d'abord puis l'autre, et le bouton compte les Communes / Peu communes qui manquent.
+// Fenêtre « Proposer un échange » (relevé du 17/11/2026) : le site montre les cartes du partenaire 60 par 60, de la
+// plus rare à la moins rare, chaque carte est un dessin animé lourd. Le script ne doit jamais tout charger (2.35.44 le
+// faisait : page lente, ventilateurs). « + Ce qui me manque » compte d'après les données (collection, catalogue,
+// /trades/available), et au clic se sert des filtres du site (« Il me manque », une rareté à la fois) puis les remet.
+// Avec seulement C et U allumées : 20 cartes C / U ajoutées, peu de cartes dessinées, filtres du joueur rendus.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const script = fs.readFileSync(process.argv[2], 'utf8');
@@ -9,18 +10,22 @@ const PARTNER = '9c0dd3ed-8c47-44ff-8725-4871f97a016d';
 const N = 4856;
 const seals = ['M', 'L', 'E', 'R', 'U', 'C'];
 const rarityOf = (i) => seals[Math.min(5, Math.floor(i / (N / 6)))];
+const owned = (i) => i % 5 === 0; // one card in five already in my collection
+const BASE = 100000;
 (async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1300, height: 900 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
+  const characters = Array.from({ length: N }, (_, i) => ({ id: BASE + i, name: `P${i}`, rarity: rarityOf(i), series: 'S', image: '' }));
   await page.route('https://kyara.games/**', async (route) => {
     const url = new URL(route.request().url()); const p = url.pathname;
     const json = (body) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
-    if (p === '/api/characters') return json([]);
-    if (p === '/api/me/collection') return json([]);
+    if (p === '/api/characters') return json(characters);
+    if (p === '/api/me/collection') return json(characters.filter((_, i) => owned(i)).map((c) => ({ characterId: c.id, qty: 1, listable: 0 })));
     if (p === '/api/me/bootstrap') return json({ me: { id: 'me' }, wishlist: [] });
-    if (p.startsWith('/api/')) return json(p.startsWith('/api/trades/available/') ? [] : {});
+    if (p === `/api/trades/available/${PARTNER}`) return json(characters.map((c) => ({ characterId: c.id, n: 1 })));
+    if (p.startsWith('/api/')) return json({});
     if (p === `/profil/${PARTNER}`) return route.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><html><body><main></main></body></html>' });
     return route.fulfill({ status: 404, body: '' });
   });
@@ -28,51 +33,72 @@ const rarityOf = (i) => seals[Math.min(5, Math.floor(i / (N / 6)))];
   await page.goto(`https://kyara.games/profil/${PARTNER}`);
   await page.addScriptTag({ content: script });
   await page.waitForTimeout(300);
-  // a small Svelte-like site: "Voir plus" raises the limit, the grid is drawn once in a microtask
-  await page.evaluate(({ N, seals }) => {
+  // a small Svelte-like site: filters + "Voir plus" change the state, the grid is redrawn once in a microtask
+  await page.evaluate(({ N, seals, BASE }) => {
     const rarityOf = (i) => seals[Math.min(5, Math.floor(i / (N / 6)))];
-    const tile = (i, base) => `<li><button type="button" class="tile"><span class="card"><img alt="" src="https://cdn.kyara.games/cards/sm/${base + i}.webp"><div class="top"><span class="seal">${rarityOf(i)}</span></div></span> <span class="cap"><span class="pr mono">10 ◆</span> <span class="lack">Il me manque</span></span></button></li>`;
-    const inv = (side, hid) => `<section class="inv ${side}${hid ? ' hid' : ''}"><div class="filters"><input type="search"><div class="chips"><button type="button" class="only">Il me manque</button></div></div><div class="inv-scroll"><ul class="grid"></ul></div></section>`;
+    const owned = (i) => i % 5 === 0;
+    const letters = ['C', 'U', 'R', 'E', 'L', 'M'];
+    const bar = `<div class="rbar-o"><div class="rbar" role="group" aria-label="Rareté"><button type="button" class="r all on" aria-pressed="true" title="Toutes"><span class="g"></span><span class="n">Toutes</span></button> ${letters.map((l) => `<button type="button" class="r" aria-pressed="false" title="${l}"><span class="g">${l}</span></button>`).join('')}</div></div>`;
+    const inv = (side, hid) => `<section class="inv ${side}${hid ? ' hid' : ''}"><div class="filters"><input type="search"> <div class="chips"><button type="button" class="only" aria-pressed="false">Je l’ai</button><button type="button" class="only" aria-pressed="false">Il me manque</button></div> ${bar}</div><div class="inv-scroll"><ul class="grid"></ul></div></section>`;
     document.body.insertAdjacentHTML('beforeend', `<style>.hid{display:none}</style><div role="dialog" aria-label="Proposer un échange à ItoVeVe"><form class="desk" data-step="mine"><div class="strip"><span class="amt"><b>0 ◆</b></span><span class="amt r"><b>0 ◆</b></span></div><section class="table"><section class="tray mine"><ul class="slots"></ul></section><section class="tray"><ul class="slots"></ul></section></section>${inv('mine', false)}${inv('theirs', true)}</form></div>`);
-    window.__draws = { mine: 0, theirs: 0 };
-    for (const side of ['mine', 'theirs']) {
-      const section = document.querySelector(`section.inv.${side}`);
-      const scroll = section.querySelector('.inv-scroll'); const grid = scroll.querySelector('ul.grid');
-      const base = side === 'mine' ? 1 : 100000;
-      let limit = 60; let queued = false;
-      const draw = () => {
-        queued = false; window.__draws[side]++;
-        const shown = grid.children.length;
-        grid.insertAdjacentHTML('beforeend', Array.from({ length: Math.min(limit, N) - shown }, (_, k) => tile(shown + k, base)).join(''));
-        let more = scroll.querySelector('button.more');
-        if (limit >= N) return more?.remove();
-        if (!more) { more = document.createElement('button'); more.type = 'button'; more.className = 'btn more'; more.addEventListener('click', () => { limit += 60; if (!queued) { queued = true; queueMicrotask(draw); } }); scroll.append(more); }
-        more.textContent = `Voir plus (${N - limit} autres)`;
-      };
-      draw();
-      section.querySelector('ul.grid').addEventListener('click', (e) => {
-        const t = e.target.closest('button.tile'); if (!t) return;
-        (window.__times ??= []).push(performance.now()); document.querySelectorAll('section.tray')[1].querySelector('.slots').insertAdjacentHTML('beforeend', `<li><img src="${t.querySelector('img').src}"></li>`);
-      });
-    }
-  }, { N, seals });
-  const t0 = Date.now();
-  await page.waitForFunction((N) => document.querySelectorAll('section.inv.theirs button.tile').length === N && document.querySelectorAll('section.inv.mine button.tile').length === N, N, { timeout: 30000 }).catch(() => {});
-  const out = { loadMs: Date.now() - t0 };
-  out.draws = await page.evaluate(() => window.__draws);
-  // the player goes to "Tu reçois"
+    window.__maxTiles = 0; window.__drawn = 0;
+    const section = document.querySelector('section.inv.theirs');
+    const scroll = section.querySelector('.inv-scroll'); const grid = scroll.querySelector('ul.grid');
+    const st = { limit: 60, lack: false, rar: null };
+    let queued = false;
+    const tile = (i) => `<li><button type="button" class="tile"><span class="card"><img alt="" src="https://cdn.kyara.games/cards/sm/${BASE + i}.webp"><div class="top"><span class="seal">${rarityOf(i)}</span></div></span> <span class="cap"><span class="pr mono">10 ◆</span> ${owned(i) ? '' : '<span class="lack">Il me manque</span>'}</span></button></li>`;
+    const draw = () => {
+      queued = false;
+      const list = Array.from({ length: N }, (_, i) => i).filter((i) => (!st.lack || !owned(i)) && (!st.rar || rarityOf(i) === st.rar));
+      const shown = list.slice(0, st.limit);
+      grid.innerHTML = shown.map(tile).join('');
+      window.__drawn += shown.length; window.__maxTiles = Math.max(window.__maxTiles, shown.length);
+      let more = scroll.querySelector('button.more');
+      if (list.length <= st.limit) more?.remove();
+      else {
+        if (!more) { more = document.createElement('button'); more.type = 'button'; more.className = 'btn more'; more.addEventListener('click', () => { st.limit += 60; redraw(); }); scroll.append(more); }
+        more.textContent = `Voir plus (${list.length - st.limit} autres)`;
+      }
+      const lackBtn = [...section.querySelectorAll('.chips button')][1];
+      lackBtn.setAttribute('aria-pressed', String(st.lack)); lackBtn.classList.toggle('on', st.lack);
+      for (const b of section.querySelectorAll('.rbar button')) {
+        const on = b.classList.contains('all') ? st.rar == null : b.querySelector('.g').textContent === st.rar;
+        b.setAttribute('aria-pressed', String(on)); b.classList.toggle('on', on);
+      }
+    };
+    const redraw = () => { if (!queued) { queued = true; queueMicrotask(draw); } };
+    [...section.querySelectorAll('.chips button')][1].addEventListener('click', () => { st.lack = !st.lack; st.limit = 60; redraw(); });
+    for (const b of section.querySelectorAll('.rbar button')) b.addEventListener('click', () => { st.rar = b.classList.contains('all') ? null : b.querySelector('.g').textContent; st.limit = 60; redraw(); });
+    grid.addEventListener('click', (e) => {
+      const t = e.target.closest('button.tile'); if (!t) return;
+      document.querySelectorAll('section.tray')[1].querySelector('.slots').insertAdjacentHTML('beforeend', `<li><img src="${t.querySelector('img').src}"></li>`);
+    });
+    draw();
+    const m = document.querySelector('section.inv.mine ul.grid'); m.innerHTML = Array.from({ length: 60 }, (_, i) => tile(i)).join('');
+    m.insertAdjacentHTML('afterend', '<button type="button" class="btn more">Voir plus (4000 autres)</button>');
+  }, { N, seals, BASE });
+  await page.waitForTimeout(1500);
+  const out = {};
+  out.mineTilesAfterWait = await page.evaluate(() => document.querySelectorAll('section.inv.mine button.tile').length);
   await page.evaluate(() => { document.querySelector('section.inv.mine').classList.add('hid'); document.querySelector('section.inv.theirs').classList.remove('hid'); });
-  await page.waitForFunction(() => /\(20\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => /\(\d+\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 10000 }).catch(() => {});
   out.label = await page.evaluate(() => [document.querySelector('[data-kp-add-missing]').textContent, document.querySelector('[data-kp-add-missing]').disabled]);
+  out.title = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').title);
   const t1 = Date.now();
   await page.click('[data-kp-add-missing]');
-  await page.waitForFunction(() => document.querySelectorAll('section.tray')[1].querySelectorAll('img').length === 20, null, { timeout: 10000 }).catch(() => {});
+  await page.waitForFunction(() => /ajoutée/.test([...document.querySelectorAll('.kp-toast')].map((t) => t.textContent).join(' ')), null, { timeout: 10000 }).catch(() => {});
   out.addMs = Date.now() - t1;
-  out.added = await page.evaluate(() => [...new Set([...document.querySelectorAll('section.tray')[1].querySelectorAll('img')].map((i) => i.src))].length);
-  out.addedRarities = await page.evaluate(() => { const ids = new Set([...document.querySelectorAll('section.tray')[1].querySelectorAll('img')].map((i) => i.src)); return [...new Set([...document.querySelectorAll('section.inv.theirs button.tile')].filter((t) => ids.has(t.querySelector('img').src)).map((t) => t.querySelector('.seal').textContent))].join(''); });
-  out.inPageMs = await page.evaluate(() => Math.round(window.__times.at(-1) - window.__times[0]));
+  out.toast = await page.evaluate(() => [...document.querySelectorAll('.kp-toast')].map((t) => t.textContent).pop());
+  out.after = await page.evaluate((BASE) => {
+    const imgs = [...document.querySelectorAll('section.tray')[1].querySelectorAll('img')].map((i) => Number(i.src.match(/(\d+)\.webp/)[1]) - BASE);
+    return { n: new Set(imgs).size, ids: imgs.slice(0, 5), maxTiles: window.__maxTiles, drawn: window.__drawn, filters: [...document.querySelectorAll('section.inv.theirs .filters button')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent.trim()).join(','), label: document.querySelector('[data-kp-add-missing]').textContent };
+  }, BASE);
+  out.rarities = [...new Set(out.after.ids.map(rarityOf))].join('');
+  out.allOk = await page.evaluate((args) => [...document.querySelectorAll('section.tray')[1].querySelectorAll('img')].every((i) => { const k = Number(i.src.match(/(\d+)\.webp/)[1]) - args.BASE; return k % 5 !== 0 && ['U', 'C'].includes(args.seals[Math.min(5, Math.floor(k / (args.N / 6)))]); }), { BASE, seals, N });
   out.errors = errors;
-  const ok = out.draws.mine <= 3 && out.draws.theirs <= 3 && out.label[0] === '+ Ce qui me manque (20)' && !out.label[1] && out.added === 20 && /^[CU]+$/.test(out.addedRarities) && errors.length === 0;
+  const expected = Array.from({ length: N }, (_, i) => i).filter((i) => !owned(i) && ['C', 'U'].includes(rarityOf(i))).length;
+  const ok = out.mineTilesAfterWait === 60 && out.label[0] === '+ Ce qui me manque (20)' && !out.label[1] && new RegExp(`\\(${expected} en tout\\)`).test(out.title.replace(/\s/g, ' '))
+    && out.after.n === 20 && out.allOk && out.after.maxTiles <= 120 && out.after.filters === 'Toutes' && /20 cartes ajoutées/.test(out.toast) && out.after.label === '+ Ce qui me manque (0)' && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

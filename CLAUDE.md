@@ -66,6 +66,9 @@ offres du site (bouton « Proposer »), `probe()` la pagination des offres du ta
   `.chips` des filtres du site, barre de rareté), `ul.grid > li > button.tile` et « Voir plus » `button.more`, enfin `.foot`
   (étapes 1-2-3, Annuler, Suivant, Envoyer). Le bloc `kp-verdict` s'insère après `.strip`, la rangée « + Ce qui me
   manque » après les `.filters` de l'inventaire du partenaire. `kyaraPlusDiag.dialog()` enregistre la fenêtre ouverte.
+  Les cartes sont des dessins animés lourds, 60 par « Voir plus », les plus rares d'abord : ne jamais tout charger (la
+  2.35.44 le faisait : page lente, ventilateurs). « + Ce qui me manque » passe par les filtres du site (« Il me manque »,
+  barre `.rbar` : `button.all` + un bouton par lettre `.g`, `aria-pressed`) puis les remet.
 - Tableau des offres du site redessiné (relevé du 08/11/2026) : `section.board[aria-label="Offres d’échange"]`,
   `.filters .line button.prop` « Proposer une carte », `.pills` de filtres, `ul.offers > li.offer` avec `.acts` (« Donner X »,
   « Proposer autre chose »). Le script masque ce tableau et clique son bouton ; voir `createProposeOpener`.
