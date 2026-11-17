@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.45
+// @version      2.35.46
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4556,7 +4556,74 @@ Continuer ?`);
           await waitFor(() => isPressed(barButton(letter)));
         }
       }
+      // The site's own filters of each inventory ("Il me manque", "Mes doubles"…, rarity bar) are forgotten by the site at
+      // every new trade: the script remembers what the player turned on (real clicks only, never its own) and turns it
+      // back on when the next trade window opens.
+      const FILTERS_SETTING = "tradeFilters";
+      const siteChipsOf = (inv) => [...inv.querySelectorAll(".filters .chips button")];
+      const chipLabel = (chip) => chip.textContent.trim();
+      const barOf = (inv) => inv.querySelector(".filters .rbar");
+      const letterOf = (button) => button.classList.contains("all") ? null : button.querySelector(".g")?.textContent.trim() || null;
+      const filterState = (inv) => ({
+        chips: siteChipsOf(inv).filter(isPressed).map(chipLabel),
+        rarities: [...barOf(inv)?.querySelectorAll("button") ?? []].filter((button) => letterOf(button) && isPressed(button)).map(letterOf)
+      });
+      const sideKey = (inv) => isTheirInventory(inv) ? "theirs" : "mine";
+      let applying = null;
+      const restoredFilters = /* @__PURE__ */ new WeakSet();
+      async function applyFilters(inv, wanted) {
+        for (const label of new Set([...wanted.chips, ...siteChipsOf(inv).map(chipLabel)])) {
+          const find = () => siteChipsOf(inv).find((chip) => chipLabel(chip) === label);
+          const on = wanted.chips.includes(label);
+          if (!find() || isPressed(find()) === on) continue;
+          find().click();
+          await waitFor(() => isPressed(find()) === on, 400);
+        }
+        const bar = () => barOf(inv);
+        if (!bar()) return;
+        const pressed = () => [...bar()?.querySelectorAll("button") ?? []].filter((button) => letterOf(button) && isPressed(button)).map(letterOf).sort().join();
+        const target = [...wanted.rarities].sort().join();
+        if (pressed() === target) return;
+        const all = () => bar()?.querySelector("button.all");
+        if (all() && !isPressed(all())) {
+          all().click();
+          await waitFor(() => isPressed(all()), 400);
+        }
+        for (const letter of wanted.rarities) {
+          const find = () => [...bar()?.querySelectorAll("button") ?? []].find((button) => letterOf(button) === letter);
+          if (!find() || isPressed(find())) continue;
+          find().click();
+          await waitFor(() => isPressed(find()), 400);
+        }
+      }
+      function restoreFilters(inventories) {
+        const fresh = inventories.filter((inv) => !restoredFilters.has(inv) && inv.querySelector(".filters"));
+        if (!fresh.length || applying) return;
+        fresh.forEach((inv) => restoredFilters.add(inv));
+        const saved = readSetting(FILTERS_SETTING, {});
+        applying = (async () => {
+          for (const inv of fresh) {
+            const wanted = saved?.[sideKey(inv)];
+            if (wanted && inv.isConnected) await applyFilters(inv, { chips: wanted.chips ?? [], rarities: wanted.rarities ?? [] });
+          }
+        })().catch(() => {}).finally(() => {
+          applying = null;
+          schedule();
+        });
+      }
+      const rememberFilters = (event) => {
+        if (!event.isTrusted || adding || applying) return;
+        const inv = event.target.closest?.(`${TRADE_INV}`);
+        if (!inv || !event.target.closest(".filters button")) return;
+        // read once the site has drawn the new state
+        setTimeout(() => {
+          if (!inv.isConnected) return;
+          writeSetting(FILTERS_SETTING, { ...readSetting(FILTERS_SETTING, {}), [sideKey(inv)]: filterState(inv) });
+        }, 120);
+      };
+      document.addEventListener("click", rememberFilters, true);
       async function addMissingCards() {
+        if (applying) await applying;
         const inv = theirInventory();
         if (adding || !inv) return;
         const paged = Boolean(inv.querySelector("button.more"));
@@ -4627,6 +4694,7 @@ Continuer ?`);
       function decorate2() {
         const inventories = [...document.querySelectorAll(TRADE_INV)];
         if (!inventories.length) return addRow.remove();
+        restoreFilters(inventories);
         for (const inv of inventories) {
           const theirs = isTheirInventory(inv);
           const counts = theirs ? countsOf(profileIdFromPath()) : collection && new Map([...collection].map(([id, entry]) => [id, entry.qty]));
@@ -4663,6 +4731,7 @@ Continuer ?`);
       }).catch((error) => toast(describeError(error), "error"));
       return () => {
         observer.disconnect();
+        document.removeEventListener("click", rememberFilters, true);
         cancelAnimationFrame(frame);
         sorters.mine.stop();
         sorters.theirs.stop();
@@ -5417,7 +5486,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.45";
+  var SURVEY_VERSION = "2.35.46";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

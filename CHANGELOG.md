@@ -4,6 +4,11 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.46
+- Fenêtre d'échange : les filtres du site que tu allumes (« Il me manque », « Mes doubles », « Ses doubles »…, et la
+  rareté) sont retenus, de ton côté comme de celui de l'autre joueur, et rallumés à l'ouverture de l'échange suivant,
+  même après rechargement. Les éteindre les fait oublier. La recherche n'est pas retenue.
+
 ## 2.35.45
 - Fenêtre d'échange de nouveau légère : la 2.35.44 faisait charger toutes les cartes des deux joueurs (près de 10 000
   dessins animés), d'où la page lente et les ventilateurs. Le script ne charge plus rien de lui-même.

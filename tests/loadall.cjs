@@ -34,7 +34,7 @@ const BASE = 100000;
   await page.addScriptTag({ content: script });
   await page.waitForTimeout(300);
   // a small Svelte-like site: filters + "Voir plus" change the state, the grid is redrawn once in a microtask
-  await page.evaluate(({ N, seals, BASE }) => {
+  await page.evaluate(({ N, seals, BASE }) => { window.__open = () => {
     const rarityOf = (i) => seals[Math.min(5, Math.floor(i / (N / 6)))];
     const owned = (i) => i % 5 === 0;
     const letters = ['C', 'U', 'R', 'E', 'L', 'M'];
@@ -76,7 +76,8 @@ const BASE = 100000;
     draw();
     const m = document.querySelector('section.inv.mine ul.grid'); m.innerHTML = Array.from({ length: 60 }, (_, i) => tile(i)).join('');
     m.insertAdjacentHTML('afterend', '<button type="button" class="btn more">Voir plus (4000 autres)</button>');
-  }, { N, seals, BASE });
+    window.__st = st;
+  }; window.__open(); }, { N, seals, BASE });
   await page.waitForTimeout(1500);
   const out = {};
   out.mineTilesAfterWait = await page.evaluate(() => document.querySelectorAll('section.inv.mine button.tile').length);
@@ -95,10 +96,25 @@ const BASE = 100000;
   }, BASE);
   out.rarities = [...new Set(out.after.ids.map(rarityOf))].join('');
   out.allOk = await page.evaluate((args) => [...document.querySelectorAll('section.tray')[1].querySelectorAll('img')].every((i) => { const k = Number(i.src.match(/(\d+)\.webp/)[1]) - args.BASE; return k % 5 !== 0 && ['U', 'C'].includes(args.seals[Math.min(5, Math.floor(k / (args.N / 6)))]); }), { BASE, seals, N });
+  // filters remembered: the player turns on "Il me manque" and rarity L on the partner's side, then opens a new trade
+  await page.click('section.inv.theirs .chips button:has-text("Il me manque")');
+  await page.click('section.inv.theirs .rbar button:has(.g:text-is("L"))');
+  await page.waitForTimeout(300);
+  out.saved = await page.evaluate(() => JSON.parse(localStorage.getItem('kyara-plus:settings')).tradeFilters);
+  await page.evaluate(() => { document.querySelector('[role="dialog"]').remove(); document.querySelector('style').remove(); window.__open(); document.querySelector('section.inv.mine').classList.add('hid'); document.querySelector('section.inv.theirs').classList.remove('hid'); });
+  await page.waitForTimeout(800);
+  out.reopened = await page.evaluate(() => ({ lack: window.__st.lack, rar: window.__st.rar, pressed: [...document.querySelectorAll('section.inv.theirs .filters button')].filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent.trim()).join(',') }));
+  // turned off again by the player: the next trade opens without them
+  await page.click('section.inv.theirs .rbar button.all');
+  await page.click('section.inv.theirs .chips button:has-text("Il me manque")');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => { document.querySelector('[role="dialog"]').remove(); document.querySelector('style').remove(); window.__open(); document.querySelector('section.inv.mine').classList.add('hid'); document.querySelector('section.inv.theirs').classList.remove('hid'); });
+  await page.waitForTimeout(800);
+  out.cleared = await page.evaluate(() => ({ lack: window.__st.lack, rar: window.__st.rar }));
   out.errors = errors;
   const expected = Array.from({ length: N }, (_, i) => i).filter((i) => !owned(i) && ['C', 'U'].includes(rarityOf(i))).length;
   const ok = out.mineTilesAfterWait === 60 && out.label[0] === '+ Ce qui me manque (20)' && !out.label[1] && new RegExp(`\\(${expected} en tout\\)`).test(out.title.replace(/\s/g, ' '))
-    && out.after.n === 20 && out.allOk && out.after.maxTiles <= 120 && out.after.filters === 'Toutes' && /20 cartes ajoutées/.test(out.toast) && out.after.label === '+ Ce qui me manque (0)' && errors.length === 0;
+    && out.after.n === 20 && out.allOk && out.after.maxTiles <= 120 && out.after.filters === 'Toutes' && /20 cartes ajoutées/.test(out.toast) && out.after.label === '+ Ce qui me manque (0)' && out.saved?.theirs?.chips?.join() === 'Il me manque' && out.saved.theirs.rarities.join() === 'L' && out.reopened.lack === true && out.reopened.rar === 'L' && out.cleared.lack === false && out.cleared.rar === null && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();
