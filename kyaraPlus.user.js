@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.41
+// @version      2.35.42
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4354,10 +4354,16 @@ Continuer ?`);
   }
 
   // src/features/trade-dialog.js
-  var SHELF = '[role="dialog"] .shelf';
+  // "Proposer un échange", fenêtre redessinée (relevé du 17/11/2026) : form.desk[data-step] holds the two trays
+  // (section.table > section.tray, mine has the class "mine"), then one inventory per player, section.inv.mine and
+  // section.inv.theirs (the one not on screen has the class "hid"), each with its .filters (search, .chips of the site's own
+  // filters "Mes doubles" / "Il me manque" / "Ses doubles"…, rarity bar), then .inv-scroll > ul.grid > li > button.tile and
+  // "Voir plus" (button.more). The site now has its own filters: the script keeps them and adds the copy counts on the tiles,
+  // the price order and, on the partner's side, "+ Ce qui me manque" with its rarity pastilles in a row of its own.
+  var TRADE_INV = '[role="dialog"] section.inv';
   var TILE = "ul.grid button.tile";
-  var DUPLICATE_MIN = config_default.profile.duplicateMin;
-  var isTheirTabSelected = (shelf) => [...shelf.querySelectorAll('.tabs [role="tab"]')].findIndex((tab) => tab.getAttribute("aria-selected") === "true") === 1;
+  var isTheirInventory = (inv) => inv.classList.contains("theirs");
+  var isInventoryShown = (inv) => !inv.classList.contains("hid") && inv.getClientRects().length > 0;
   var trade_dialog_default = {
     id: "trade-dialog",
     matches: isPlayerPage,
@@ -4366,9 +4372,8 @@ Continuer ?`);
       let catalog = null;
       let frame = 0;
       const theirCounts = /* @__PURE__ */ new Map();
-      const active = /* @__PURE__ */ new Set();
       let pricesFailed = false;
-      const sorter = createSettledSorter(() => schedule());
+      const sorters = { mine: createSettledSorter(() => schedule()), theirs: createSettledSorter(() => schedule()) };
       const requestPrices = createPriceRequester(
         () => schedule(),
         (error) => {
@@ -4377,10 +4382,10 @@ Continuer ?`);
           toast(describeError(error), "error");
         }
       );
-      function orderTiles(shelf, tiles) {
+      function orderTiles(inv, tiles, sorter) {
         const items = tiles.map((tile2) => ({ tile: tile2, card: catalog?.get(tileCardId(tile2)) })).filter((item) => item.card && item.tile.closest("li"));
         requestPrices(items.map((item) => item.card.id));
-        const allLoaded = Boolean(catalog) && !shelf.querySelector("button.more");
+        const allLoaded = Boolean(catalog) && !inv.querySelector("button.more");
         const ready = allLoaded && (pricesFailed || items.every((item) => isPriceLoaded(item.card.id)));
         const ordered = items.map(({ tile: tile2, card }) => ({ element: tile2.closest("li"), card, price: priceOf(card.id) }));
         sorter.apply(ordered, ready);
@@ -4406,53 +4411,21 @@ Continuer ?`);
         return theirCounts.get(userId2);
       }
       const myQty = (id) => collection?.get(id)?.qty ?? 0;
-      const mySpares = (id) => {
-        const entry = collection?.get(id);
-        return entry ? Math.min(entry.listable ?? 0, entry.qty - 1) : 0;
-      };
-      // ready: the data a filter needs is there (a filter applies as soon as its own data is loaded, without waiting for the rest)
-      const filters = {
-        mine: [
-          { key: "myDuplicates", label: "Mes doubles", ready: () => Boolean(collection), keep: ({ id }) => mySpares(id) > 0 },
-          { key: "theyLack", label: "Il lui manque", ready: () => true, keep: ({ tile: tile2 }) => Boolean(tile2.querySelector(".lack")) }
-        ],
-        theirs: [
-          { key: "theirDuplicates", label: "Ses doubles", ready: ({ count }) => count != null, keep: ({ count }) => count >= DUPLICATE_MIN },
-          { key: "iLack", label: "Il me manque", ready: () => Boolean(collection), keep: ({ id }) => myQty(id) === 0 }
-        ]
-      };
-      const chips = Object.fromEntries(
-        Object.entries(filters).map(([tab, list]) => [
-          tab,
-          list.map((filter) => {
-            const chip = h("button", { type: "button", "data-kp-filter": filter.key, "aria-pressed": "false" }, filter.label);
-            chip.addEventListener("click", () => {
-              if (active.has(filter.key)) active.delete(filter.key);
-              else active.add(filter.key);
-              chip.classList.toggle("on", active.has(filter.key));
-              chip.setAttribute("aria-pressed", String(active.has(filter.key)));
-              schedule();
-            });
-            return chip;
-          })
-        ])
-      );
-      // Our chips live in a row of their own, placed before the site's row (which is hidden): the site redraws its row
-      // freely without ever duplicating or losing ours. The row borrows the site's classes to look the same.
-      // "+ Ce qui me manque" (partner's tab): puts into the trade the first cards shown in the partner's grid (display order)
-      // that I don't own (qty 0), once each, skipping those already in their tray, up to the site's limit of
+      // "+ Ce qui me manque" (partner's inventory): puts into the trade the first cards shown in the partner's grid (display
+      // order) that I don't own (qty 0), once each, skipping those already in their tray, up to the site's limit of
       // TRADE_SIDE_MAX different cards per side (copies of a card already there don't count). Respects the filters in use.
       const TRADE_SIDE_MAX = 20;
       const addMissing = h("button", { type: "button", "data-kp-add-missing": "" }, "+ Ce qui me manque");
       let adding = false;
+      const theirInventory = () => [...document.querySelectorAll(TRADE_INV)].find(isTheirInventory) ?? null;
       const theirTray = () => [...document.querySelectorAll(`${TRADE_DIALOG} ${TRADE_TRAY}`)].find((tray) => !tray.classList.contains("mine")) ?? null;
-      const trayIds = (tray) => new Set([...tray?.querySelectorAll(".slots li img") ?? []].map((img) => Number(img.getAttribute("src")?.match(/\/cards\/\w+\/(\d+)\./)?.[1])));
+      const trayIds = (tray) => new Set([...tray?.querySelectorAll('img[src*="/cards/"]') ?? []].map((img) => Number(img.getAttribute("src")?.match(/\/cards\/\w+\/(\d+)\./)?.[1])).filter(Boolean));
       const iLack = (id, tile2) => collection ? myQty(id) === 0 : Boolean(tile2.querySelector(".lack"));
       const shownAt = (tile2, index) => {
         const order = tile2.closest("li")?.style.order;
         return order ? Number(order) : index;
       };
-      // Rarities the button takes (lit pastilles), remembered in the settings for every next trade. All lit by default.
+      // Rarities the button takes (lit pills), remembered in the settings for every next trade. All lit by default.
       let addRarities = new Set(readSetting("addMissingRarities", RARITIES));
       const rarityOk = (id) => {
         if (addRarities.size === RARITIES.length) return true;
@@ -4480,21 +4453,21 @@ Continuer ?`);
       renderRarityPills();
       const rarityGroup = h("span", { class: "kp-add-rarities" }, rarityPills.map(([, pill]) => pill));
       // { ids: the cards the button would add, in display order, total: every missing card shown, room: free places }
-      function missingCards(shelf) {
+      function missingCards(inv) {
         const inTray = trayIds(theirTray());
         const room = Math.max(0, TRADE_SIDE_MAX - inTray.size);
         const seen = /* @__PURE__ */ new Set();
-        const ids = [...shelf.querySelectorAll(TILE)].map((tile2, index) => ({ tile: tile2, id: tileCardId(tile2), at: shownAt(tile2, index) })).sort((a, b) => a.at - b.at).filter(({ tile: tile2, id }) => {
-          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || tile2.closest("li")?.classList.contains("kp-filtered-out") || !iLack(id, tile2) || !rarityOk(id)) return false;
+        const ids = [...inv.querySelectorAll(TILE)].map((tile2, index) => ({ tile: tile2, id: tileCardId(tile2), at: shownAt(tile2, index) })).sort((a, b) => a.at - b.at).filter(({ tile: tile2, id }) => {
+          if (!id || seen.has(id) || inTray.has(id) || tile2.disabled || !iLack(id, tile2) || !rarityOk(id)) return false;
           seen.add(id);
           return true;
         }).map(({ id }) => id);
         return { ids: ids.slice(0, room), total: ids.length, room };
       }
       async function addMissingCards() {
-        const shelf = document.querySelector(SHELF);
-        if (adding || !shelf) return;
-        const { ids, total, room } = missingCards(shelf);
+        const inv = theirInventory();
+        if (adding || !inv) return;
+        const { ids, total, room } = missingCards(inv);
         if (!room) return toast(`Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.`, "info");
         if (!ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
         adding = true;
@@ -4503,7 +4476,7 @@ Continuer ?`);
         let refused = 0;
         try {
           for (const id of ids) {
-            const tile2 = [...document.querySelectorAll(`${SHELF} ${TILE}`)].find((t) => tileCardId(t) === id);
+            const tile2 = [...theirInventory()?.querySelectorAll(TILE) ?? []].find((t) => tileCardId(t) === id);
             const tray = theirTray();
             if (tray && trayIds(tray).size >= TRADE_SIDE_MAX) break;
             if (!tile2 || tile2.disabled || trayIds(tray).has(id)) continue;
@@ -4524,55 +4497,48 @@ Continuer ?`);
       }
       // deferred: the rest of the user's click must not reach the site after our synthetic clicks (see CLAUDE.md)
       addMissing.addEventListener("click", () => setTimeout(addMissingCards, 0));
-      const chipRow = h("div", { class: "kp-dialog-chips" }, ...chips.mine, ...chips.theirs, rarityGroup, addMissing);
-      function placeChips(shelf, tab) {
-        const siteRow = [...shelf.querySelectorAll(".chips")].find((row) => row !== chipRow && !row.getAttribute("aria-label"));
-        if (!siteRow) return;
-        const siteChips = [...siteRow.querySelectorAll("button")];
-        siteChips.filter((chip) => chip.classList.contains("on")).forEach((chip) => chip.click());
-        siteRow.classList.add("kp-site-only");
-        const baseClass = (siteChips[0]?.className ?? "only").replace(/\b(on|kp-site-only)\b/g, "").trim();
-        chipRow.className = `${siteRow.className.replace(/\bkp-site-only\b/, "").trim()} kp-dialog-chips`;
-        for (const [key, list] of Object.entries(chips)) {
-          for (const chip of list) {
-            chip.hidden = key !== tab;
-            chip.className = `${baseClass}${active.has(chip.dataset.kpFilter) ? " on" : ""}`;
-          }
-        }
-        addMissing.hidden = tab !== "theirs";
-        rarityGroup.hidden = tab !== "theirs";
-        addMissing.className = `${baseClass} kp-add-missing`;
-        if (chipRow.nextElementSibling !== siteRow) siteRow.before(chipRow);
+      const addRow = h("div", { class: "kp-dialog-chips" }, rarityGroup, addMissing);
+      // our row sits right after the site's filters of the partner's inventory, borrowing the site's chip classes
+      function placeAddRow(inv) {
+        const filters = inv.querySelector(".filters");
+        if (!filters) return addRow.remove();
+        const siteChip = filters.querySelector(".chips button");
+        const baseClass = (siteChip?.className ?? "only").replace(/\bon\b/g, "").trim();
+        const rowClass = `${filters.querySelector(".chips")?.className ?? "chips"} kp-dialog-chips`;
+        if (addRow.className !== rowClass) addRow.className = rowClass;
+        if (addMissing.className !== `${baseClass} kp-add-missing`) addMissing.className = `${baseClass} kp-add-missing`;
+        if (filters.nextElementSibling !== addRow) filters.after(addRow);
       }
       function decorate2() {
-        const shelf = document.querySelector(SHELF);
-        if (!shelf) return;
-        const tab = isTheirTabSelected(shelf) ? "theirs" : "mine";
-        const counts = tab === "theirs" ? countsOf(profileIdFromPath()) : collection && new Map([...collection].map(([id, entry]) => [id, entry.qty]));
-        const activeFilters = filters[tab].filter((filter) => active.has(filter.key));
-        placeChips(shelf, tab);
-        shelf.querySelector("button.more")?.click();
-        const tiles = [...shelf.querySelectorAll(TILE)];
-        for (const tile2 of tiles) {
-          const id = tileCardId(tile2);
-          const count = counts ? counts.get(id) ?? 0 : null;
-          renderCount(tile2, count);
-          const hidden = activeFilters.some((filter) => filter.ready({ count }) && !filter.keep({ id, tile: tile2, count }));
-          tile2.closest("li")?.classList.toggle("kp-filtered-out", hidden);
+        const inventories = [...document.querySelectorAll(TRADE_INV)];
+        if (!inventories.length) return addRow.remove();
+        for (const inv of inventories) {
+          const theirs = isTheirInventory(inv);
+          const counts = theirs ? countsOf(profileIdFromPath()) : collection && new Map([...collection].map(([id, entry]) => [id, entry.qty]));
+          // the site shows its cards by pages: load them all, but only for the inventory on screen
+          if (isInventoryShown(inv)) inv.querySelector("button.more")?.click();
+          const tiles = [...inv.querySelectorAll(TILE)];
+          for (const tile2 of tiles) renderCount(tile2, counts ? counts.get(tileCardId(tile2)) ?? 0 : null);
+          if (theirs) {
+            placeAddRow(inv);
+            const missing = adding ? null : missingCards(inv);
+            const n = missing?.ids.length;
+            const text = missing == null ? "Ajout…" : `+ Ce qui me manque (${n})`;
+            if (addMissing.textContent !== text) addMissing.textContent = text;
+            const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : ""}.`;
+            if (title && addMissing.title !== title) addMissing.title = title;
+            if (!adding) addMissing.disabled = n === 0;
+          }
+          orderTiles(inv, tiles, sorters[theirs ? "theirs" : "mine"]);
         }
-        if (tab === "theirs") {
-          const missing = adding ? null : missingCards(shelf);
-          const n = missing?.ids.length;
-          const text = missing == null ? "Ajout…" : `+ Ce qui me manque (${n})`;
-          if (addMissing.textContent !== text) addMissing.textContent = text;
-          const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : ""}.`;
-          if (title && addMissing.title !== title) addMissing.title = title;
-          if (!adding) addMissing.disabled = n === 0;
-        }
-        orderTiles(shelf, tiles);
+        if (!inventories.some(isTheirInventory)) addRow.remove();
       }
-      const observer = new MutationObserver(schedule);
-      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-selected"] });
+      const observer = new MutationObserver((records) => {
+        // class changes count only on the inventories (shown / hidden): images and animations change classes all the time
+        const relevant = records.some((record) => !addRow.contains(record.target) && (record.type !== "attributes" || record.attributeName === "data-step" || record.target.matches?.("section.inv")));
+        if (relevant) schedule();
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-step"] });
       Promise.all([loadCollection(), loadCatalog()]).then(([loadedCollection, loadedCatalog]) => {
         collection = loadedCollection;
         catalog = loadedCatalog;
@@ -4581,10 +4547,10 @@ Continuer ?`);
       return () => {
         observer.disconnect();
         cancelAnimationFrame(frame);
-        sorter.stop();
-        clearOrder(document.querySelectorAll(`${SHELF} ul.grid > li`));
-        chipRow.remove();
-        document.querySelectorAll(".kp-site-only").forEach((chip) => chip.classList.remove("kp-site-only"));
+        sorters.mine.stop();
+        sorters.theirs.stop();
+        clearOrder(document.querySelectorAll(`${TRADE_INV} ul.grid > li`));
+        addRow.remove();
         clearCounts();
       };
     }
@@ -4597,9 +4563,20 @@ Continuer ?`);
   // the partner's bars and the gift / gap left between the two players. The site's own band only states the gift.
   config_default.tradeVerdict = { refreshMs: 30 * 1e3 };
   var TRADE_DIALOG = '[role="dialog"]';
-  var TRADE_TRAYS = ".trays";
+  // fenêtre redessinée (relevé du 17/11/2026) : trays in section.table, totals in the top band .strip (".amt" = Tu donnes,
+  // ".amt.r" = Tu reçois, "<b>423 ◆</b>"), the site's own sentence in .strip .say. Older layout kept as a fallback.
+  var TRADE_TRAYS = "section.table, .trays";
   var TRADE_TRAY = "section.tray";
-  var TRADE_SITE_VERDICT = ".verdict";
+  var TRADE_SITE_VERDICT = ".strip, .verdict";
+  function stripTotals(dialog) {
+    const amounts = [...dialog.querySelectorAll(".strip .amt")];
+    const read = (amount) => {
+      const digits = amount?.querySelector("b")?.textContent.replace(/\D/g, "") ?? "";
+      return digits ? Number(digits) : null;
+    };
+    if (amounts.length < 2) return null;
+    return { given: read(amounts.find((amount) => !amount.classList.contains("r"))), received: read(amounts.find((amount) => amount.classList.contains("r"))) };
+  }
   function trayTotal(tray) {
     const digits = tray.querySelector("header .total")?.textContent.replace(/\D/g, "") ?? "";
     if (digits) return Number(digits);
@@ -4760,8 +4737,9 @@ Continuer ?`);
         loadFair(partnerId, !node);
         const mine = sections.find((section) => section.classList.contains("mine")) ?? sections[0];
         const theirs = sections.find((section) => section !== mine);
-        const given = trayTotal(mine);
-        const received = trayTotal(theirs);
+        const strip = stripTotals(dialog);
+        const given = strip ? strip.given : trayTotal(mine);
+        const received = strip ? strip.received : trayTotal(theirs);
         const verdict = tradeVerdict({ given, received }, fair);
         if (!verdict) return remove();
         const partnerName = partnerNameOf(dialog);
@@ -5322,7 +5300,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.41";
+  var SURVEY_VERSION = "2.35.42";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

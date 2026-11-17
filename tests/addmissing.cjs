@@ -8,11 +8,14 @@ const characters = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, name: `Per
 const collection = [{ characterId: 1, qty: 1, listable: 1 }, { characterId: 2, qty: 3, listable: 3 }];
 const tile = (id) => `<li><button type="button" class="tile" aria-label="Ajouter Perso ${id}"><img alt="" src="https://cdn.kyara.games/cards/sm/${id}.webp"> <span class="nm">Perso ${id}</span> <span class="pr mono">10 ◆</span></button></li>`;
 const slot = (id) => `<li><img src="https://cdn.kyara.games/cards/sm/${id}.webp"></li>`;
-const dialog = (inTray, n = 8) => `<div role="dialog" aria-label="Proposer un échange à ItoVeVe"><form><div class="trays"><section class="tray mine"><header><h3>Tu donnes</h3> <span class="total mono">≈ 0 ◆</span></header><ul class="slots"></ul></section><section class="tray"><header><h3>Tu reçois</h3> <span class="total mono">≈ 0 ◆</span></header><ul class="slots">${inTray.map(slot).join('')}</ul></section></div><div class="verdict"></div><div class="shelf"><div class="tabs" role="tablist"><button type="button" role="tab" aria-selected="false">Mes cartes</button><button type="button" role="tab" aria-selected="true">Cartes de ItoVeVe</button></div><div class="filters"><input type="search"><div class="chips svelte-x"><button type="button" class="only svelte-x">Je l’ai</button></div></div><ul class="grid">${Array.from({ length: n }, (_, i) => i + 1).map(tile).join('')}</ul></div></form></div>`;
+// fenêtre redessinée (relevé du 17/11/2026) : plateaux dans section.table, un inventaire par joueur (section.inv.mine /
+// section.inv.theirs, celui qui n'est pas à l'écran a la classe « hid »), filtres du site dans .filters
+const inv = (side, ids, hid) => `<section class="inv ${side} svelte-adlc8v${hid ? ' hid' : ''}"><header class="inv-head"><h3>${side === 'mine' ? 'Mes cartes' : 'Cartes de ItoVeVe'}</h3></header> <div class="filters svelte-adlc8v"><input type="search"> <div class="chips svelte-adlc8v"><button type="button" class="only svelte-adlc8v" aria-pressed="false">Je l’ai</button><button type="button" class="only svelte-adlc8v" aria-pressed="false">Ses doubles</button></div> <div class="rbar-o"><div class="rbar" role="group" aria-label="Rareté"><button type="button" class="r all on">Toutes</button></div></div></div> <div class="inv-scroll"><ul class="grid svelte-adlc8v">${ids.map(tile).join('')}</ul></div></section>`;
+const dialog = (inTray, n = 8) => `<style>.hid{display:none}</style><div role="dialog" aria-label="Proposer un échange à ItoVeVe"><div class="body"><form class="desk svelte-adlc8v" data-step="theirs"><div role="status" class="strip idle"><div class="scale"><span class="amt"><small>Tu donnes</small><b class="mono">0 ◆</b></span> <span class="amt r"><small>Tu reçois</small><b class="mono">0 ◆</b></span></div><div class="say"><p class="v-d">…</p></div></div> <section class="table"><section class="tray mine compact"><header><h3>Tu donnes</h3></header><ul class="slots"></ul></section> <div class="swap">⇅</div> <section class="tray compact"><header><h3>Tu reçois</h3></header><ul class="slots">${inTray.map(slot).join('')}</ul></section></section> ${inv('mine', [1, 2], true)} ${inv('theirs', Array.from({ length: n }, (_, i) => i + 1), false)} <div class="foot"><div class="steps" role="tablist"><button type="button" role="tab" aria-selected="false">Tu donnes</button><button type="button" role="tab" aria-selected="true">Tu reçois</button></div></div></form></div></div>`;
 // the site's behaviour: a click on a tile adds the card to the partner's tray, up to `cap` cards
 const siteBehaviour = (cap) => {
   window.__clicks = [];
-  document.querySelector('[role="dialog"] .shelf ul.grid').addEventListener('click', (e) => {
+  document.querySelector('[role="dialog"] section.inv.theirs ul.grid').addEventListener('click', (e) => {
     const t = e.target.closest('button.tile'); if (!t) return;
     const id = t.querySelector('img').src.match(/(\d+)\.webp/)[1];
     window.__clicks.push(Number(id));
@@ -58,11 +61,11 @@ const siteBehaviour = (cap) => {
   await page.waitForFunction(() => /\(\d+\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 5000 });
   await page.waitForTimeout(300);
   out.before = await state();
-  // with "Ses doubles" on, only card 5 (3 copies) stays visible among the missing ones
-  await page.click('.kp-dialog-chips button:has-text("Ses doubles")');
+  // a site filter (here: cards 3, 4, 6, 7, 8 taken out of the grid by the site) leaves only card 5 among the missing ones
+  await page.evaluate(() => { window.__kept = [...document.querySelectorAll('section.inv.theirs ul.grid > li')].filter((li) => ![1, 2, 5].includes(Number(li.querySelector('img').src.match(/(\d+)\.webp/)[1]))); window.__kept.forEach((li) => li.remove()); });
   await page.waitForTimeout(300);
   out.filtered = await state();
-  await page.click('.kp-dialog-chips button:has-text("Ses doubles")');
+  await page.evaluate(() => { const grid = document.querySelector('section.inv.theirs ul.grid'); window.__kept.forEach((li) => grid.append(li)); [...grid.children].sort((a, b) => a.querySelector('img').src.match(/(\d+)\.webp/)[1] - b.querySelector('img').src.match(/(\d+)\.webp/)[1]).forEach((li) => grid.append(li)); });
   await page.waitForTimeout(300);
   await page.click(btn);
   await page.waitForTimeout(800);
@@ -83,16 +86,17 @@ const siteBehaviour = (cap) => {
   await page.waitForFunction(() => /\(19\)/.test(document.querySelector('[data-kp-add-missing]')?.textContent ?? ''), null, { timeout: 5000 }).catch(() => {});
   await page.waitForTimeout(2500);
   out.bigLabel = (await state()).label;
-  const expected = await page.evaluate(() => [...document.querySelectorAll('ul.grid > li')].map((li, i) => ({ id: Number(li.querySelector('img').src.match(/(\d+)\.webp/)[1]), at: li.style.order ? Number(li.style.order) : i })).sort((a, b) => a.at - b.at).map((x) => x.id).filter((id) => id > 2 && id !== 30).slice(0, 19).join(','));
+  const expected = await page.evaluate(() => [...document.querySelectorAll('section.inv.theirs ul.grid > li')].map((li, i) => ({ id: Number(li.querySelector('img').src.match(/(\d+)\.webp/)[1]), at: li.style.order ? Number(li.style.order) : i })).sort((a, b) => a.at - b.at).map((x) => x.id).filter((id) => id > 2 && id !== 30).slice(0, 19).join(','));
   await page.click(btn);
   await page.waitForTimeout(1500);
   out.big = await state();
   out.bigOk = out.big.clicks === expected;
   out.bigTitle = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').title);
-  // my tab: button hidden
-  await page.evaluate(() => { const tabs = document.querySelectorAll('[role="tab"]'); tabs[1].setAttribute('aria-selected', 'false'); tabs[0].setAttribute('aria-selected', 'true'); });
+  // my inventory on screen (partner's hidden by the site): our row goes with it, counts shown on my tiles too
+  await page.evaluate(() => { document.querySelector('section.inv.theirs').classList.add('hid'); document.querySelector('section.inv.mine').classList.remove('hid'); });
   await page.waitForTimeout(300);
-  out.mineHidden = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').hidden && document.querySelector('.kp-add-rarities').hidden);
+  out.mineHidden = await page.evaluate(() => document.querySelector('[data-kp-add-missing]').getClientRects().length === 0 && document.querySelectorAll('.kp-dialog-chips').length === 1 && document.querySelector('.kp-dialog-chips').closest('section.inv.theirs') !== null);
+  out.myCounts = await page.evaluate(() => [...document.querySelectorAll('section.inv.mine .kp-count')].map((b) => b.textContent).join(','));
   // D: pastille L turned off → Légendaires (9–12) never added; the choice survives a reload (next trade)
   const openDialog = async () => {
     await page.evaluate((html) => document.body.insertAdjacentHTML('beforeend', html), dialog([], 12));
@@ -124,7 +128,7 @@ const siteBehaviour = (cap) => {
     && out.allRarities === '+ Ce qui me manque (10)' && out.noLegend === '+ Ce qui me manque (6)'
     && out.reload.L === 'false' && out.reload.R === 'true' && out.reload.pills === 'CUREL' + 'M' && out.reload.label === '+ Ce qui me manque (6)'
     && out.reloadAdded.clicks.split(',').sort((a, b) => a - b).join(',') === '3,4,5,6,7,8'
-    && out.mineHidden && errors.length === 0;
+    && out.mineHidden && out.myCounts === '×1,×3' && errors.length === 0;
   console.log(JSON.stringify(out, null, 1));
   console.log(ok ? 'PASS' : 'FAIL');
   await browser.close();

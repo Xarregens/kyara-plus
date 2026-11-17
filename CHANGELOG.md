@@ -4,6 +4,14 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.42
+- Fenêtre « Proposer un échange » redessinée par le site (relevé du 17/11/2026) : le script s'y retrouve à nouveau.
+  « + Ce qui me manque » et ses pastilles de rareté sont sous les filtres de « Cartes de … », les ×N (exemplaires)
+  sont sur les cartes des deux côtés, le tri par prix et le chargement de toutes les cartes marchent, et le bloc Fair-play
+  se place sous la bande du haut (totaux « Tu donnes / Tu reçois » lus dans cette bande).
+- Les filtres du script (« Mes doubles », « Il lui manque », « Ses doubles », « Il me manque ») sont retirés : le site
+  a maintenant les mêmes, plus « Je l'ai ».
+
 ## 2.35.41
 - « + Ce qui me manque » : pastilles de rareté (C U R E L M) à côté du bouton. Une rareté éteinte n'est jamais ajoutée
   par le bouton (le chiffre du bouton en tient compte). Toutes allumées par défaut ; le choix est gardé pour les

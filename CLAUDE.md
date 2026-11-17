@@ -59,10 +59,13 @@ offres du site (bouton « Proposer »), `probe()` la pagination des offres du ta
 - Un `.click()` synthétique sur un bouton du site est vu par le site comme un vrai clic : il ferme tout menu ouvert
   (profil…). Ne cliquer que la cible voulue et seulement quand elle existe (`albumShowMore()` dans collection-albums :
   la vue Cartes a son propre « Afficher plus », avec le même sélecteur `main .more button`).
-- Fenêtre « Proposer un échange » (`[role=dialog]`, enregistrement du 06/11/2026) : `form .trays section.tray` (la
-  mienne a la classe `mine`), `header .total` = « ≈ 423 ◆ » cartes + chakra aux prix fair-play, `.slots li img` =
-  `/cards/sm/<id>.webp`, `label.ch input` = chakra, puis `.verdict` (bande du site), puis `.shelf` (grille). Le bloc
-  `kp-verdict` du script s'insère après `.verdict`. `kyaraPlusDiag.dialog()` enregistre la fenêtre ouverte.
+- Fenêtre « Proposer un échange » (`[role=dialog]`, redessinée, relevé du 17/11/2026) : `form.desk[data-step]`, bande du
+  haut `.strip` (`.amt b` = « Tu donnes », `.amt.r b` = « Tu reçois », totaux aux prix fair-play ; phrase du site dans
+  `.say`), plateaux `section.table > section.tray` (le mien a la classe `mine`), puis un inventaire par joueur
+  `section.inv.mine` / `section.inv.theirs` (celui qui n'est pas à l'écran a la classe `hid`) avec `.filters` (recherche,
+  `.chips` des filtres du site, barre de rareté), `ul.grid > li > button.tile` et « Voir plus » `button.more`, enfin `.foot`
+  (étapes 1-2-3, Annuler, Suivant, Envoyer). Le bloc `kp-verdict` s'insère après `.strip`, la rangée « + Ce qui me
+  manque » après les `.filters` de l'inventaire du partenaire. `kyaraPlusDiag.dialog()` enregistre la fenêtre ouverte.
 - Tableau des offres du site redessiné (relevé du 08/11/2026) : `section.board[aria-label="Offres d’échange"]`,
   `.filters .line button.prop` « Proposer une carte », `.pills` de filtres, `ul.offers > li.offer` avec `.acts` (« Donner X »,
   « Proposer autre chose »). Le script masque ce tableau et clique son bouton ; voir `createProposeOpener`.
