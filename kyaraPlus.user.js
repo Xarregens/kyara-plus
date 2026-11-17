@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Kyara Plus
 // @namespace    https://github.com/xarregens/kyara-plus
-// @version      2.35.43
+// @version      2.35.44
 // @description  Fork personnel de Kyara Plus (Myuki) : barres de fair-play Dons / Écart sur chaque offre, offres rentables remaniées, auto-accept par rareté avec gain minimum, séries déjà réclamées, Mon activité réorganisé et accéléré.
 // @author       Myuki (script d’origine), fork Xarregens
 // @homepageURL  https://github.com/xarregens/kyara-plus
@@ -4364,6 +4364,16 @@ Continuer ?`);
   var TILE = "ul.grid button.tile";
   var isTheirInventory = (inv) => inv.classList.contains("theirs");
   var isInventoryShown = (inv) => !inv.classList.contains("hid") && inv.getClientRects().length > 0;
+  // "Voir plus (4892 autres)" shows 60 more cards per click. The site sorts the rarest first, so the commonest cards only
+  // come at the very end: all the clicks it takes are made at once (the site draws once), not one per frame.
+  function loadAllCards(inv) {
+    const more = inv.querySelector("button.more");
+    if (!more) return false;
+    const left = Number(more.textContent.match(/\(([\d\s\u202f\u00a0.]+)/)?.[1].replace(/\D/g, "")) || 0;
+    const clicks = Math.min(200, Math.max(1, Math.ceil(left / 60)));
+    for (let i = 0; i < clicks && more.isConnected && !more.disabled; i++) more.click();
+    return true;
+  }
   var trade_dialog_default = {
     id: "trade-dialog",
     matches: isPlayerPage,
@@ -4469,8 +4479,20 @@ Continuer ?`);
         return { ids: ids.slice(0, room), total: ids.length, room };
       }
       async function addMissingCards() {
-        const inv = theirInventory();
+        let inv = theirInventory();
         if (adding || !inv) return;
+        if (inv.querySelector("button.more")) {
+          adding = true;
+          addMissing.disabled = true;
+          addMissing.textContent = "Chargement…";
+          for (const start = Date.now(); inv?.querySelector("button.more") && Date.now() - start < 2e4; inv = theirInventory()) {
+            loadAllCards(inv);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+          }
+          adding = false;
+          addMissing.disabled = false;
+          if (!inv) return;
+        }
         const { ids, total, room } = missingCards(inv);
         if (!room) return toast(`Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.`, "info");
         if (!ids.length) return toast("Aucune carte à ajouter : tu as déjà toutes celles affichées.", "info");
@@ -4533,22 +4555,26 @@ Continuer ?`);
       function decorate2() {
         const inventories = [...document.querySelectorAll(TRADE_INV)];
         if (!inventories.length) return addRow.remove();
+        // the inventory on screen first, then the other one, so that "Tu reçois" is ready when the player gets there
+        const shown = inventories.filter(isInventoryShown);
+        if (!shown.some(loadAllCards)) inventories.filter((inv) => !shown.includes(inv)).find(loadAllCards);
         for (const inv of inventories) {
           const theirs = isTheirInventory(inv);
           const counts = theirs ? countsOf(profileIdFromPath()) : collection && new Map([...collection].map(([id, entry]) => [id, entry.qty]));
           // the site shows its cards by pages: load them all, but only for the inventory on screen
-          if (isInventoryShown(inv)) inv.querySelector("button.more")?.click();
           const tiles = [...inv.querySelectorAll(TILE)];
           for (const tile2 of tiles) renderCount(tile2, counts ? counts.get(tileCardId(tile2)) ?? 0 : null);
           if (theirs) {
             placeAddRow(inv);
+            const loading = Boolean(inv.querySelector("button.more"));
             const missing = adding ? null : missingCards(inv);
             const n = missing?.ids.length;
-            const text = missing == null ? "Ajout…" : `+ Ce qui me manque (${n})`;
+            const text = missing == null ? "Ajout…" : loading && n < missing.room ? "+ Ce qui me manque (…)" : `+ Ce qui me manque (${n})`;
             if (addMissing.textContent !== text) addMissing.textContent = text;
             const title = missing == null ? "" : missing.room === 0 ? `Déjà ${TRADE_SIDE_MAX} cartes différentes de son côté : c’est le maximum.` : `Ajoute à l’échange les ${n} premières cartes affichées de ce joueur que tu n’as pas, une fois chacune (maximum ${TRADE_SIDE_MAX} cartes différentes de son côté${missing.total > n ? ` : ${missing.total} te manquent en tout` : ""}). Les filtres en cours (rareté, recherche…) sont respectés${addRarities.size < RARITIES.length ? ` ; raretés éteintes à côté jamais ajoutées : ${RARITIES.filter((r) => !addRarities.has(r)).map((r) => RARITY_LABELS[r]).join(", ")}` : ""}.`;
-            if (title && addMissing.title !== title) addMissing.title = title;
-            if (!adding) addMissing.disabled = n === 0;
+            const shownTitle = loading && missing && n < missing.room ? "Chargement des cartes de ce joueur… Un clic ajoute les cartes qui te manquent dès qu’elles sont toutes là." : title;
+            if (shownTitle && addMissing.title !== shownTitle) addMissing.title = shownTitle;
+            if (!adding) addMissing.disabled = n === 0 && !loading;
           }
           orderTiles(inv, tiles, sorters[theirs ? "theirs" : "mine"]);
         }
@@ -5321,7 +5347,7 @@ Continuer ?`);
   // Relevé des échanges effectués sur ce compte (offres du tableau, échanges directs, ventes, achats, ordres d'achat),
   // chacun avec l'état des jauges Dons / Écart relevé avant et après, pour vérifier le modèle du script.
   // Bouton « Relevé » de la jauge, ou en console : kyaraPlusReleve.download()
-  var SURVEY_VERSION = "2.35.43";
+  var SURVEY_VERSION = "2.35.44";
   var surveyText = (time) => time == null ? null : new Date(time).toLocaleString("fr-FR");
   var surveyCounters = (snapshot) => snapshot ? { at: snapshot.at, atText: surveyText(snapshot.at), declencheur: snapshot.trigger, dons: snapshot.counters.myReceivedLeft ?? null, ecart: snapshot.counters.myFreeLeft ?? null } : null;
   // the other fields of /fair-play/with/<joueur>, unknown to the script (candidates for the limits between two players)

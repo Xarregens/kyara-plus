@@ -4,6 +4,12 @@ Base : Kyara Plus 2.34.3 (Myuki). Les versions de travail étaient numérotées 
 sur ce dépôt, la numérotation reprend normalement (2.35.0, 2.35.1…), toujours supérieure à celle du script d'origine
 pour que Tampermonkey ne revienne jamais en arrière.
 
+## 2.35.44
+- « + Ce qui me manque » ne reste plus grisé quand seules quelques raretés sont allumées (ex. C et U) : le site montre
+  les cartes de la plus rare à la moins rare, 60 par 60, et les Communes n'arrivaient qu'au bout de dizaines de « Voir
+  plus ». Toutes les cartes sont maintenant chargées d'un coup (celles de l'écran affiché d'abord, puis celles de l'autre
+  joueur pendant que tu choisis les tiennes). Pendant le chargement le bouton affiche « (…) » et reste cliquable.
+
 ## 2.35.43
 - « + Ce qui me manque » : les cartes qui manquent sont reconnues grâce à la mention « Il me manque » que le site met
   sur chaque carte, et la rareté grâce à la lettre de la carte. Plus besoin d'allumer le filtre « Il me manque ».
